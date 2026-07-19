@@ -14,7 +14,7 @@ from .exceptions import (
     NatureRemoConnectionError,
     NatureRemoRateLimitError,
 )
-from .models import RateLimit, User
+from .models import Device, RateLimit, User
 
 API_BASE_URL = "https://api.nature.global"
 _TIMEOUT = aiohttp.ClientTimeout(total=30)
@@ -91,3 +91,26 @@ class NatureRemoClient:
     async def get_user(self) -> User:
         """Return the account that owns the access token."""
         return User.from_dict(await self._request("GET", "/1/users/me"))
+
+    async def get_devices(self) -> list[Device]:
+        """Return all Nature Remo devices on the account."""
+        data = await self._request("GET", "/1/devices")
+        return [Device.from_dict(item) for item in data]
+
+    async def set_temperature_offset(self, device_id: str, offset: int) -> Device:
+        """Set the temperature offset (device-specific integer steps)."""
+        data = await self._request(
+            "POST",
+            f"/1/devices/{device_id}/temperature_offset",
+            data={"offset": str(offset)},
+        )
+        return Device.from_dict(data)
+
+    async def set_humidity_offset(self, device_id: str, offset: int) -> Device:
+        """Set the humidity offset (device-specific integer steps)."""
+        data = await self._request(
+            "POST",
+            f"/1/devices/{device_id}/humidity_offset",
+            data={"offset": str(offset)},
+        )
+        return Device.from_dict(data)

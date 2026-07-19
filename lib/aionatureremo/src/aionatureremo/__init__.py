@@ -8,12 +8,26 @@ from .exceptions import (
     NatureRemoError,
     NatureRemoRateLimitError,
 )
-from .models import RateLimit, User
+from .models import (
+    EVENT_HUMIDITY,
+    EVENT_ILLUMINATION,
+    EVENT_MOVEMENT,
+    EVENT_TEMPERATURE,
+    Device,
+    RateLimit,
+    SensorValue,
+    User,
+)
 
 __version__ = "0.1.0"
 
 __all__ = [
     "API_BASE_URL",
+    "EVENT_HUMIDITY",
+    "EVENT_ILLUMINATION",
+    "EVENT_MOVEMENT",
+    "EVENT_TEMPERATURE",
+    "Device",
     "NatureRemoApiError",
     "NatureRemoAuthError",
     "NatureRemoClient",
@@ -21,5 +35,6 @@ __all__ = [
     "NatureRemoError",
     "NatureRemoRateLimitError",
     "RateLimit",
+    "SensorValue",
     "User",
 ]

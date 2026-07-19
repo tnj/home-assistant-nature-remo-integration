@@ -119,3 +119,56 @@ async def test_network_failure_raises_connection_error(
 
     with pytest.raises(NatureRemoConnectionError):
         await client.get_user()
+
+
+async def test_get_devices(client: NatureRemoClient, mock_api: aioresponses) -> None:
+    """Devices endpoint parses into a list of Device."""
+    mock_api.get(
+        f"{API}/1/devices",
+        payload=[
+            {
+                "id": "device-1",
+                "name": "Living Remo",
+                "firmware_version": "Remo/1.14.8",
+                "newest_events": {
+                    "te": {"val": 26.4, "created_at": "2026-07-18T07:59:00Z"}
+                },
+            }
+        ],
+    )
+
+    devices = await client.get_devices()
+
+    assert len(devices) == 1
+    assert devices[0].id == "device-1"
+    assert devices[0].events["te"].value == 26.4
+
+
+async def test_set_temperature_offset(
+    client: NatureRemoClient, mock_api: aioresponses
+) -> None:
+    """Offset update POSTs a form body and returns the updated device."""
+    mock_api.post(
+        f"{API}/1/devices/device-1/temperature_offset",
+        payload={"id": "device-1", "name": "Living Remo", "temperature_offset": 2},
+    )
+
+    device = await client.set_temperature_offset("device-1", 2)
+
+    assert device.temperature_offset == 2.0
+    calls = next(iter(mock_api.requests.values()))
+    assert calls[0].kwargs["data"] == {"offset": "2"}
+
+
+async def test_set_humidity_offset(
+    client: NatureRemoClient, mock_api: aioresponses
+) -> None:
+    """Humidity offset hits its own endpoint."""
+    mock_api.post(
+        f"{API}/1/devices/device-1/humidity_offset",
+        payload={"id": "device-1", "name": "Living Remo", "humidity_offset": -3},
+    )
+
+    device = await client.set_humidity_offset("device-1", -3)
+
+    assert device.humidity_offset == -3.0
