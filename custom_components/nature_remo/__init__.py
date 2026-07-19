@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from aionatureremo import NatureRemoClient
 from homeassistant.const import CONF_API_TOKEN, Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .const import DOMAIN
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
 
 PLATFORMS: list[Platform] = [
@@ -20,12 +22,39 @@ PLATFORMS: list[Platform] = [
 ]
 
 
+@callback
+def _async_remove_stale_devices(
+    hass: HomeAssistant, entry: NatureRemoConfigEntry
+) -> None:
+    """Drop registry devices that no longer exist on the account."""
+    coordinator = entry.runtime_data
+    current_ids = set(coordinator.data.devices) | set(coordinator.data.appliances)
+    device_registry = dr.async_get(hass)
+    for device_entry in dr.async_entries_for_config_entry(
+        device_registry, entry.entry_id
+    ):
+        identifiers = {
+            identifier[1]
+            for identifier in device_entry.identifiers
+            if identifier[0] == DOMAIN
+        }
+        if identifiers and not identifiers & current_ids:
+            device_registry.async_update_device(
+                device_entry.id, remove_config_entry_id=entry.entry_id
+            )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: NatureRemoConfigEntry) -> bool:
     """Set up Nature Remo from a config entry."""
     client = NatureRemoClient(entry.data[CONF_API_TOKEN], async_get_clientsession(hass))
     coordinator = NatureRemoCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
+
+    _async_remove_stale_devices(hass, entry)
+    entry.async_on_unload(
+        coordinator.async_add_listener(lambda: _async_remove_stale_devices(hass, entry))
+    )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
@@ -34,3 +63,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: NatureRemoConfigEntry) -
 async def async_unload_entry(hass: HomeAssistant, entry: NatureRemoConfigEntry) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,
+    entry: NatureRemoConfigEntry,
+    device_entry: dr.DeviceEntry,
+) -> bool:
+    """Allow removing a device only when it is gone from the account."""
+    coordinator = entry.runtime_data
+    current_ids = set(coordinator.data.devices) | set(coordinator.data.appliances)
+    return not any(
+        identifier[0] == DOMAIN and identifier[1] in current_ids
+        for identifier in device_entry.identifiers
+    )
