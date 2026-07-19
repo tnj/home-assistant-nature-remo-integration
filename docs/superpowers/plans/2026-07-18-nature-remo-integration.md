@@ -132,6 +132,7 @@ __pycache__/
 htmlcov/
 dist/
 config/
+.superpowers/
 ```
 
 - [ ] **Step 3: Create `LICENSE`** — full MIT text, `Copyright (c) 2026 Yuki Fujisaki`. Use the canonical MIT license body from https://opensource.org/license/mit (the standard 3-paragraph text) verbatim with that copyright line.
