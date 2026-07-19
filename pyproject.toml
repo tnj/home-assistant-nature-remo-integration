@@ -7,7 +7,9 @@ dependencies = []
 
 [tool.uv]
 package = false
-dev-dependencies = [
+
+[dependency-groups]
+dev = [
     "aionatureremo",
     "homeassistant",
     "pytest-homeassistant-custom-component",
