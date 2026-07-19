@@ -66,6 +66,10 @@
       "bright_down": { "name": "Brightness down" },
       "colortemp_up": { "name": "Color temperature up" },
       "colortemp_down": { "name": "Color temperature down" }
+    },
+    "number": {
+      "temperature_offset": { "name": "Temperature offset" },
+      "humidity_offset": { "name": "Humidity offset" }
     }
   }
 }

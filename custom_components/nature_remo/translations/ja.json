@@ -66,6 +66,10 @@
       "bright_down": { "name": "暗く" },
       "colortemp_up": { "name": "色温度を上げる" },
       "colortemp_down": { "name": "色温度を下げる" }
+    },
+    "number": {
+      "temperature_offset": { "name": "温度補正" },
+      "humidity_offset": { "name": "湿度補正" }
     }
   }
 }
