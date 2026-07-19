@@ -1,0 +1,45 @@
+[project]
+name = "nature-remo-ha-workspace"
+version = "0.0.0"
+description = "Development workspace for the Nature Remo Home Assistant integration"
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.uv]
+package = false
+dev-dependencies = [
+    "aionatureremo",
+    "homeassistant",
+    "pytest-homeassistant-custom-component",
+    "aioresponses>=0.7.6",
+    "ruff>=0.8.0",
+    "mypy>=1.14.0",
+]
+
+[tool.uv.sources]
+aionatureremo = { workspace = true }
+
+[tool.uv.workspace]
+members = ["lib/aionatureremo"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "lib/aionatureremo/tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "RUF", "SIM", "UP", "W"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+# NOTE: "custom_components/nature_remo" is added back once that directory
+# exists (Task 7 creates it) - mypy errors on files/dirs that don't exist yet.
+files = ["lib/aionatureremo/src"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
