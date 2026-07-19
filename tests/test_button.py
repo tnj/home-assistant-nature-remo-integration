@@ -1,12 +1,20 @@
 """Tests for the Nature Remo button platform."""
 
+from dataclasses import replace
 from unittest.mock import AsyncMock
 
-from aionatureremo import LightState
+import pytest
+from aionatureremo import (
+    Appliance,
+    ApplianceButton,
+    LightState,
+    NatureRemoConnectionError,
+)
 from homeassistant.components.button import DOMAIN as BUTTON_DOMAIN
 from homeassistant.components.button import SERVICE_PRESS
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -66,3 +74,71 @@ async def test_light_extra_buttons(
         BUTTON_DOMAIN, SERVICE_PRESS, {ATTR_ENTITY_ID: night_entity}, blocking=True
     )
     mock_client.send_light_button.assert_called_once_with("appliance-light-1", "night")
+
+
+async def test_signal_button_failure_raises(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
+) -> None:
+    """A failed IR signal send surfaces as HomeAssistantError."""
+    mock_client.send_signal.side_effect = NatureRemoConnectionError("boom")
+    with pytest.raises(HomeAssistantError, match="Failed to send IR signal"):
+        await hass.services.async_call(
+            BUTTON_DOMAIN,
+            SERVICE_PRESS,
+            {ATTR_ENTITY_ID: "button.fan_power"},
+            blocking=True,
+        )
+
+
+async def test_light_button_failure_raises(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
+) -> None:
+    """A failed light-button press surfaces as HomeAssistantError."""
+    entity_registry = er.async_get(hass)
+    night_entity = entity_registry.async_get_entity_id(
+        BUTTON_DOMAIN, DOMAIN, "appliance-light-1_button_night"
+    )
+    assert night_entity is not None
+    mock_client.send_light_button.side_effect = NatureRemoConnectionError("boom")
+    with pytest.raises(HomeAssistantError, match="Bedroom Light"):
+        await hass.services.async_call(
+            BUTTON_DOMAIN, SERVICE_PRESS, {ATTR_ENTITY_ID: night_entity}, blocking=True
+        )
+
+
+async def test_light_button_unknown_name_uses_label(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """A light button with an unmapped name falls back to its label."""
+    mock_client.get_appliances.return_value = [
+        replace(
+            appliance,
+            light=replace(
+                appliance.light,
+                buttons=[
+                    *appliance.light.buttons,
+                    ApplianceButton(
+                        name="sleep-timer", image="ico_timer", label="Sleep timer"
+                    ),
+                ],
+            ),
+        )
+        if appliance.id == "appliance-light-1"
+        else appliance
+        for appliance in appliances
+    ]
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_registry = er.async_get(hass)
+    entity_id = entity_registry.async_get_entity_id(
+        BUTTON_DOMAIN, DOMAIN, "appliance-light-1_button_sleep-timer"
+    )
+    assert entity_id is not None
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.attributes["friendly_name"] == "Bedroom Light Sleep timer"

@@ -1,10 +1,11 @@
 """Tests for the Nature Remo climate platform."""
 
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from aionatureremo import AirconSettings, Appliance, NatureRemoRateLimitError
+from aionatureremo import AirconSettings, Appliance, Device, NatureRemoRateLimitError
 from homeassistant.components.climate import (
     ATTR_CURRENT_HUMIDITY,
     ATTR_CURRENT_TEMPERATURE,
@@ -24,6 +25,7 @@ from homeassistant.components.climate import (
     SERVICE_SET_SWING_HORIZONTAL_MODE,
     SERVICE_SET_SWING_MODE,
     SERVICE_SET_TEMPERATURE,
+    ClimateEntityFeature,
     HVACMode,
 )
 from homeassistant.components.climate import (
@@ -34,12 +36,32 @@ from homeassistant.const import (
     ATTR_TEMPERATURE,
     SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
+    UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.nature_remo.climate import (
+    NatureRemoClimate,
+    _coerce_to_allowed,
+)
+from custom_components.nature_remo.coordinator import NatureRemoData
+
 ENTITY = "climate.living_ac"
+
+
+def _ac_entity(
+    appliances: list[Appliance], devices: list[Device], ac: Appliance
+) -> NatureRemoClimate:
+    """Build a climate entity backed by a replaced AC appliance (no HA setup)."""
+    mapped = {a.id: (ac if a.id == "appliance-ac-1" else a) for a in appliances}
+    data = NatureRemoData(
+        devices={d.id: d for d in devices},
+        appliances=mapped,
+    )
+    coordinator = SimpleNamespace(data=data)
+    return NatureRemoClimate(coordinator, "appliance-ac-1")  # type: ignore[arg-type]
 
 
 def _settings(**overrides: str | None) -> AirconSettings:
@@ -238,3 +260,120 @@ async def test_climate_command_failure_raises(
         await hass.services.async_call(
             CLIMATE_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: ENTITY}, blocking=True
         )
+
+
+async def test_climate_set_hvac_mode_off(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
+) -> None:
+    """set_hvac_mode OFF sends the power-off button."""
+    mock_client.set_aircon_settings.return_value = _settings(button="power-off")
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_HVAC_MODE,
+        {ATTR_ENTITY_ID: ENTITY, ATTR_HVAC_MODE: HVACMode.OFF},
+        blocking=True,
+    )
+    assert mock_client.set_aircon_settings.call_args.kwargs["button"] == "power-off"
+    state = hass.states.get(ENTITY)
+    assert state is not None
+    assert state.state == HVACMode.OFF
+
+
+async def test_climate_set_temperature_off(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
+) -> None:
+    """set_temperature with hvac_mode OFF powers off instead of setting temp."""
+    mock_client.set_aircon_settings.return_value = _settings(button="power-off")
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_TEMPERATURE,
+        {ATTR_ENTITY_ID: ENTITY, ATTR_TEMPERATURE: 26, ATTR_HVAC_MODE: HVACMode.OFF},
+        blocking=True,
+    )
+    assert mock_client.set_aircon_settings.call_args.kwargs["button"] == "power-off"
+    state = hass.states.get(ENTITY)
+    assert state is not None
+    assert state.state == HVACMode.OFF
+
+
+def test_coerce_to_allowed_skips_unparseable() -> None:
+    """Non-numeric candidates are skipped; unmatched values fall back."""
+    # "low" cannot be parsed and is skipped; 27 snaps to the nearest number.
+    assert _coerce_to_allowed("27", ["low", "26", "28"]) == "26"
+    # No candidate parses: fall back to the first allowed value.
+    assert _coerce_to_allowed("30", ["low", "high"]) == "low"
+
+
+def test_climate_missing_settings(
+    appliances: list[Appliance], devices: list[Device]
+) -> None:
+    """Without settings the entity exposes no mode-dependent capabilities."""
+    ac = next(a for a in appliances if a.id == "appliance-ac-1")
+    entity = _ac_entity(appliances, devices, replace(ac, settings=None))
+
+    assert entity._mode_range is None
+    assert entity.hvac_mode is None
+    assert entity.target_temperature is None
+    assert entity.fan_modes is None
+    assert entity.swing_modes is None
+    assert entity.swing_horizontal_modes is None
+    assert entity.supported_features == (
+        ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
+    )
+
+
+def test_climate_fahrenheit_unit(
+    appliances: list[Appliance], devices: list[Device]
+) -> None:
+    """A Fahrenheit appliance reports the Fahrenheit unit."""
+    ac = next(a for a in appliances if a.id == "appliance-ac-1")
+    entity = _ac_entity(
+        appliances,
+        devices,
+        replace(ac, settings=replace(ac.settings, temperature_unit="f")),
+    )
+    assert entity.temperature_unit == UnitOfTemperature.FAHRENHEIT
+
+
+def test_climate_without_aircon_uses_default_limits(
+    appliances: list[Appliance], devices: list[Device]
+) -> None:
+    """With no aircon ranges the entity falls back to HA default temp limits."""
+    ac = next(a for a in appliances if a.id == "appliance-ac-1")
+    entity = _ac_entity(appliances, devices, replace(ac, aircon=None))
+
+    assert entity._absolute_temperatures() == []
+    # Falls through to ClimateEntity's default min/max (no per-mode ranges).
+    assert entity.min_temp < entity.max_temp
+
+
+def test_climate_current_readings_without_device(
+    appliances: list[Appliance], devices: list[Device]
+) -> None:
+    """No bound Remo (or a missing one) yields no current temperature/humidity."""
+    ac = next(a for a in appliances if a.id == "appliance-ac-1")
+
+    detached = _ac_entity(appliances, devices, replace(ac, device_id=None))
+    assert detached.current_temperature is None
+    assert detached.current_humidity is None
+
+    dangling = _ac_entity(appliances, devices, replace(ac, device_id="missing"))
+    assert dangling.current_temperature is None
+    assert dangling.current_humidity is None
+
+
+async def test_climate_unsupported_values_raise(
+    appliances: list[Appliance], devices: list[Device]
+) -> None:
+    """Values outside the current mode's allowed ranges are rejected."""
+    ac = next(a for a in appliances if a.id == "appliance-ac-1")
+    entity = _ac_entity(appliances, devices, ac)
+
+    with pytest.raises(ServiceValidationError):
+        await entity.async_set_hvac_mode(HVACMode.HEAT_COOL)
+    with pytest.raises(ServiceValidationError):
+        await entity.async_set_fan_mode("bogus")
+    with pytest.raises(ServiceValidationError):
+        await entity.async_set_swing_mode("bogus")
+    with pytest.raises(ServiceValidationError):
+        await entity.async_set_swing_horizontal_mode("bogus")
