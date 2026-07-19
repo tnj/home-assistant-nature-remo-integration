@@ -1,0 +1,44 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "description": "Enter a personal access token issued at [home.nature.global](https://home.nature.global/).",
+        "data": {
+          "api_token": "Access token"
+        },
+        "data_description": {
+          "api_token": "Personal access token for the Nature account."
+        }
+      },
+      "reauth_confirm": {
+        "description": "The access token is no longer valid. Issue a new token at [home.nature.global](https://home.nature.global/) and enter it here.",
+        "data": {
+          "api_token": "Access token"
+        },
+        "data_description": {
+          "api_token": "Personal access token for the same Nature account."
+        }
+      },
+      "reconfigure": {
+        "description": "Replace the access token for this Nature account.",
+        "data": {
+          "api_token": "Access token"
+        },
+        "data_description": {
+          "api_token": "Personal access token for the same Nature account."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "invalid_auth": "Invalid authentication",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "Account is already configured",
+      "reauth_successful": "Re-authentication was successful",
+      "reconfigure_successful": "Re-configuration was successful",
+      "wrong_account": "The token belongs to a different Nature account"
+    }
+  }
+}

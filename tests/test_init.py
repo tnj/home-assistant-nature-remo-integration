@@ -52,3 +52,6 @@ async def test_setup_auth_error_is_setup_error(
     await hass.async_block_till_done()
 
     assert mock_config_entry.state is ConfigEntryState.SETUP_ERROR
+
+    flows = hass.config_entries.flow.async_progress()
+    assert any(flow["context"]["source"] == "reauth" for flow in flows)

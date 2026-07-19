@@ -51,7 +51,13 @@ def mock_client(
     client.get_devices.return_value = devices
     client.get_appliances.return_value = appliances
     client.rate_limit = RateLimit(limit=30, remaining=25, reset=1752825600)
-    with patch("custom_components.nature_remo.NatureRemoClient", return_value=client):
+    with (
+        patch("custom_components.nature_remo.NatureRemoClient", return_value=client),
+        patch(
+            "custom_components.nature_remo.config_flow.NatureRemoClient",
+            return_value=client,
+        ),
+    ):
         yield client
 
 

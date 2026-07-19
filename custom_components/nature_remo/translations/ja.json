@@ -1,0 +1,44 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "description": "[home.nature.global](https://home.nature.global/) で発行したアクセストークンを入力してください。",
+        "data": {
+          "api_token": "アクセストークン"
+        },
+        "data_description": {
+          "api_token": "Nature アカウントの個人アクセストークン。"
+        }
+      },
+      "reauth_confirm": {
+        "description": "アクセストークンが無効になりました。[home.nature.global](https://home.nature.global/) で新しいトークンを発行して入力してください。",
+        "data": {
+          "api_token": "アクセストークン"
+        },
+        "data_description": {
+          "api_token": "同じ Nature アカウントの個人アクセストークン。"
+        }
+      },
+      "reconfigure": {
+        "description": "この Nature アカウントのアクセストークンを差し替えます。",
+        "data": {
+          "api_token": "アクセストークン"
+        },
+        "data_description": {
+          "api_token": "同じ Nature アカウントの個人アクセストークン。"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "接続に失敗しました",
+      "invalid_auth": "認証情報が無効です",
+      "unknown": "予期しないエラーが発生しました"
+    },
+    "abort": {
+      "already_configured": "このアカウントはすでに設定されています",
+      "reauth_successful": "再認証に成功しました",
+      "reconfigure_successful": "再設定に成功しました",
+      "wrong_account": "トークンが別の Nature アカウントのものです"
+    }
+  }
+}
