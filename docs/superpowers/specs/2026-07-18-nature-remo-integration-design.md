@@ -150,7 +150,7 @@
 - `hvac_modes`: `aircon.range.modes` のキーを写像（`cool→COOL, warm→HEAT, dry→DRY, blow→FAN_ONLY, auto→AUTO`）+ `OFF`。
 - 状態: `settings.button == "power-off"` なら `OFF`、それ以外は `settings.mode` の写像。
 - `supported_features`（動的）: `TURN_ON | TURN_OFF` 常時。現在モードの `temp` リストが非空なら `TARGET_TEMPERATURE`、`vol` 非空なら `FAN_MODE`、`dir` 非空なら `SWING_MODE`、`dirh` 非空なら `SWING_HORIZONTAL_MODE`（HA 2024.12+）。
-- `min_temp / max_temp / target_temperature_step`: 現在モードの temp リストから導出（step は隣接差の最小値、既定 1.0）。
+- `min_temp / max_temp / target_temperature_step`: **全モードの絶対温度リストの和集合**から導出（step は隣接差の最小値、既定 1.0）。HA コアは `set_temperature` をエンティティのモード切替前に min/max で検証するため、モード別レンジ（不連続あり）だと温度+モード同時指定が弾かれる。モード別の制約は送信時の許容リスト吸着で担保。auto モードの相対値リスト（`+2` 等、`+` 接頭辞で判定）は和集合から除外。
 - `fan_modes / swing_modes / swing_horizontal_modes`: API の生値をそのまま提示（`auto`, `1`〜, `swing` 等。翻訳はしない）。
 - `current_temperature / current_humidity`: 紐づく Remo 本体（`appliance.device.id`）の `te` / `hu`。
 - `temperature_unit`: `settings.temp_unit == "f"` → °F、それ以外 °C。

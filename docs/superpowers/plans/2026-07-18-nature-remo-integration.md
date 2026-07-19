@@ -3519,7 +3519,7 @@ async def test_climate_state(
     assert state.attributes[ATTR_FAN_MODES] == ["1", "2", "3", "auto"]
     assert state.attributes[ATTR_SWING_MODES] == ["1", "2", "swing", "auto"]
     assert state.attributes[ATTR_SWING_HORIZONTAL_MODES] == ["1", "2", "3", "swing"]
-    assert state.attributes[ATTR_MIN_TEMP] == 24.0
+    assert state.attributes[ATTR_MIN_TEMP] == 18.0  # union across absolute modes
     assert state.attributes[ATTR_MAX_TEMP] == 28.0
     assert state.attributes[ATTR_TARGET_TEMP_STEP] == 1.0
 
@@ -3860,16 +3860,30 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
             return None
         return _parse_float(settings.temperature)
 
+    def _absolute_temperatures(self) -> list[float]:
+        """All absolute temperatures the AC accepts across modes.
+
+        HA validates set_temperature against min/max BEFORE the entity can
+        switch modes, so the advertised range must span every mode (per-mode
+        enforcement happens at send time via _coerce_to_allowed). Lists with
+        '+'-prefixed entries are relative offsets (auto mode) and excluded.
+        """
+        aircon = self.appliance.aircon
+        if aircon is None:
+            return []
+        values: set[float] = set()
+        for mode_range in aircon.modes.values():
+            if any(value.startswith("+") for value in mode_range.temperatures):
+                continue
+            for value in mode_range.temperatures:
+                if (parsed := _parse_float(value)) is not None:
+                    values.add(parsed)
+        return sorted(values)
+
     @property
     def target_temperature_step(self) -> float | None:
         """Smallest gap between allowed temperatures."""
-        if (mode_range := self._mode_range) is None or not mode_range.temperatures:
-            return None
-        values = sorted(
-            parsed
-            for value in mode_range.temperatures
-            if (parsed := _parse_float(value)) is not None
-        )
+        values = self._absolute_temperatures()
         steps = [
             second - first
             for first, second in zip(values, values[1:], strict=False)
@@ -3879,28 +3893,16 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
 
     @property
     def min_temp(self) -> float:
-        """Lowest allowed temperature in the current mode."""
-        if (mode_range := self._mode_range) and mode_range.temperatures:
-            values = [
-                parsed
-                for value in mode_range.temperatures
-                if (parsed := _parse_float(value)) is not None
-            ]
-            if values:
-                return min(values)
+        """Lowest temperature accepted by any mode."""
+        if values := self._absolute_temperatures():
+            return values[0]
         return super().min_temp
 
     @property
     def max_temp(self) -> float:
-        """Highest allowed temperature in the current mode."""
-        if (mode_range := self._mode_range) and mode_range.temperatures:
-            values = [
-                parsed
-                for value in mode_range.temperatures
-                if (parsed := _parse_float(value)) is not None
-            ]
-            if values:
-                return max(values)
+        """Highest temperature accepted by any mode."""
+        if values := self._absolute_temperatures():
+            return values[-1]
         return super().max_temp
 
     def _device_event_value(self, key: str) -> float | None:
