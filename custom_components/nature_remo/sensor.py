@@ -7,11 +7,13 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from aionatureremo import (
+    APPLIANCE_TYPE_SMART_METER,
     EVENT_HUMIDITY,
     EVENT_ILLUMINATION,
     EVENT_MOVEMENT,
     EVENT_TEMPERATURE,
     Device,
+    SmartMeter,
 )
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -19,13 +21,13 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, UnitOfTemperature
+from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
-from .entity import NatureRemoDeviceEntity
+from .entity import NatureRemoApplianceEntity, NatureRemoDeviceEntity
 
 PARALLEL_UPDATES = 0
 
@@ -86,6 +88,40 @@ DEVICE_SENSORS: tuple[NatureRemoDeviceSensorDescription, ...] = (
 )
 
 
+@dataclass(frozen=True, kw_only=True)
+class NatureRemoSmartMeterSensorDescription(SensorEntityDescription):
+    """Describes a sensor derived from smart meter properties."""
+
+    value_fn: Callable[[SmartMeter], StateType]
+
+
+SMART_METER_SENSORS: tuple[NatureRemoSmartMeterSensorDescription, ...] = (
+    NatureRemoSmartMeterSensorDescription(
+        key="instantaneous_power",
+        device_class=SensorDeviceClass.POWER,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda meter: meter.instantaneous_power_w,
+    ),
+    NatureRemoSmartMeterSensorDescription(
+        key="cumulative_energy_normal",
+        translation_key="cumulative_energy_normal",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=lambda meter: meter.cumulative_energy_kwh,
+    ),
+    NatureRemoSmartMeterSensorDescription(
+        key="cumulative_energy_reverse",
+        translation_key="cumulative_energy_reverse",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=lambda meter: meter.cumulative_energy_reverse_kwh,
+    ),
+)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: NatureRemoConfigEntry,
@@ -106,6 +142,25 @@ async def async_setup_entry(
                 known.add(unique_id)
                 new_entities.append(
                     NatureRemoDeviceSensor(coordinator, device_id, description)
+                )
+        for appliance_id, appliance in coordinator.data.appliances.items():
+            if (
+                appliance.type != APPLIANCE_TYPE_SMART_METER
+                or appliance.smart_meter is None
+            ):
+                continue
+            for meter_description in SMART_METER_SENSORS:
+                unique_id = f"{appliance_id}_{meter_description.key}"
+                if (
+                    unique_id in known
+                    or meter_description.value_fn(appliance.smart_meter) is None
+                ):
+                    continue
+                known.add(unique_id)
+                new_entities.append(
+                    NatureRemoSmartMeterSensor(
+                        coordinator, appliance_id, meter_description
+                    )
                 )
         if new_entities:
             async_add_entities(new_entities)
@@ -134,3 +189,28 @@ class NatureRemoDeviceSensor(NatureRemoDeviceEntity, SensorEntity):
     def native_value(self) -> StateType | datetime:
         """Return the current value."""
         return self.entity_description.value_fn(self.device)
+
+
+class NatureRemoSmartMeterSensor(NatureRemoApplianceEntity, SensorEntity):
+    """A sensor backed by an ECHONET Lite smart meter property."""
+
+    entity_description: NatureRemoSmartMeterSensorDescription
+
+    def __init__(
+        self,
+        coordinator: NatureRemoCoordinator,
+        appliance_id: str,
+        description: NatureRemoSmartMeterSensorDescription,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, appliance_id)
+        self.entity_description = description
+        self._attr_unique_id = f"{appliance_id}_{description.key}"
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the current value."""
+        meter = self.appliance.smart_meter
+        if meter is None:
+            return None
+        return self.entity_description.value_fn(meter)

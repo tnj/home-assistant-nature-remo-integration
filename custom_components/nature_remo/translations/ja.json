@@ -44,7 +44,9 @@
   "entity": {
     "sensor": {
       "illuminance": { "name": "明るさ" },
-      "last_motion": { "name": "最終人感検知" }
+      "last_motion": { "name": "最終人感検知" },
+      "cumulative_energy_normal": { "name": "買電量" },
+      "cumulative_energy_reverse": { "name": "売電量" }
     }
   }
 }
