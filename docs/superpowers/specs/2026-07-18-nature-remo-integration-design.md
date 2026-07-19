@@ -88,7 +88,7 @@
   - `async send_light_button(appliance_id, button) -> LightState`
   - `async send_signal(signal_id) -> None`
   - `async set_temperature_offset(device_id, offset) -> Device` / `set_humidity_offset(...)`
-- **モデル** (dataclass): `User / Device / SensorValue / Appliance / ApplianceModel / AirconRange / AirconSettings / TV / TVState / Light / LightState / Signal / SmartMeter / EchonetLiteProperty`。`from_dict()` classmethod で防御的にパース（未知フィールド無視、欠落は None）。
+- **モデル** (dataclass): `User / Device / SensorValue / Appliance / ApplianceModel / AirconRange / AirconSettings / TV / TVState / Light / LightState / Signal / SmartMeter / EchonetLiteProperty`。`from_dict()` classmethod で防御的にパース（未知フィールド無視、任意フィールドの欠落は None/デフォルト。ただし `id`/`epc` 等の必須識別子は fail-fast — API が保証するキーであり、デフォルト化は下流のインデックスを静かに壊すため）。
 - **SmartMeter ヘルパー**: `instantaneous_power_w -> int | None`、`cumulative_energy_kwh -> float | None`、`cumulative_energy_reverse_kwh -> float | None`（§2 の査表・係数ロジックを内蔵）。
 - **例外**: `NatureRemoError`（基底）/ `NatureRemoAuthError`(401) / `NatureRemoRateLimitError`(429、`reset` epoch 保持) / `NatureRemoApiError`(その他 4xx/5xx、status 保持) / `NatureRemoConnectionError`（ネットワーク層）。
 - **レート制限追跡**: 全応答の `X-Rate-Limit-*` を読み `client.rate_limit: RateLimit(limit, remaining, reset)` として公開（先行実装にない改善点。統合側はログ・診断に使用）。

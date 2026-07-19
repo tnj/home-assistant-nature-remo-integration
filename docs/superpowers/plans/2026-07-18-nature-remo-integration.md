@@ -14,7 +14,7 @@
 
 - Python `>=3.13` for the workspace; library `requires-python >=3.12`. Run every command through `uv run …` (the workspace venv).
 - All code, comments, docstrings, and `strings.json` copy in **English**. Japanese only in `translations/ja.json` and `README.ja.md`.
-- Library depends on **aiohttp only** (no pydantic). All models are `@dataclass(frozen=True, slots=True)` with tolerant `from_dict` classmethods (unknown fields ignored, missing fields default).
+- Library depends on **aiohttp only** (no pydantic). All models are `@dataclass(frozen=True, slots=True)` with tolerant `from_dict` classmethods (unknown fields ignored, missing **optional** fields default; required identity keys such as `id`/`epc` fail fast with KeyError by design — the API guarantees them, and defaulting them would corrupt downstream indexing silently).
 - Nature API: base `https://api.nature.global`, header `Authorization: Bearer {token}`, **POST bodies are form-urlencoded** (`data=` in aiohttp, never `json=`), responses are JSON. Rate limit 30 req/5 min; headers `X-Rate-Limit-Limit/-Remaining/-Reset`.
 - Integration domain: `nature_remo`. Poll interval: 60 s. No options flow, no user-configurable scan interval.
 - Every entity: `_attr_has_entity_name = True`; unique_id patterns exactly as given per task (spec §6).
