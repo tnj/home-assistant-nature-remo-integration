@@ -27,6 +27,8 @@ members = ["lib/aionatureremo"]
 [tool.pytest.ini_options]
 testpaths = ["tests", "lib/aionatureremo/tests"]
 asyncio_mode = "auto"
+addopts = "--import-mode=importlib"
+pythonpath = ["."]
 
 [tool.ruff]
 target-version = "py313"
@@ -38,9 +40,7 @@ select = ["B", "E", "F", "I", "RUF", "SIM", "UP", "W"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
-# NOTE: "custom_components/nature_remo" is added back once that directory
-# exists (Task 7 creates it) - mypy errors on files/dirs that don't exist yet.
-files = ["lib/aionatureremo/src"]
+files = ["lib/aionatureremo/src", "custom_components/nature_remo"]
 
 [[tool.mypy.overrides]]
 module = ["tests.*"]

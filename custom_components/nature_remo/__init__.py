@@ -1,0 +1,1 @@
+"""The Nature Remo integration."""
