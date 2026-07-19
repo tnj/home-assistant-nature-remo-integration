@@ -10,6 +10,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import DOMAIN
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
+from .entity import build_remo_device_info
 
 PLATFORMS: list[Platform] = [
     Platform.BUTTON,
@@ -20,6 +21,26 @@ PLATFORMS: list[Platform] = [
     Platform.SELECT,
     Platform.SENSOR,
 ]
+
+
+@callback
+def _async_register_devices(hass: HomeAssistant, entry: NatureRemoConfigEntry) -> None:
+    """Register every Remo hardware device up front (spec 5.4).
+
+    Appliance entities link to their hub via ``via_device=(DOMAIN, device.id)``,
+    but Remo hubs would otherwise only materialize as a side effect of their own
+    sensor/number entities. Energy-only hubs (Remo E / E lite) report no such
+    events, so their device would never be registered and their appliances would
+    dangle. Registering here — before platforms are forwarded — guarantees every
+    ``via_device`` target exists regardless of platform setup ordering.
+    """
+    coordinator = entry.runtime_data
+    device_registry = dr.async_get(hass)
+    for device in coordinator.data.devices.values():
+        device_registry.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            **build_remo_device_info(device),
+        )
 
 
 @callback
@@ -51,7 +72,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: NatureRemoConfigEntry) -
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
 
+    _async_register_devices(hass, entry)
     _async_remove_stale_devices(hass, entry)
+    entry.async_on_unload(
+        coordinator.async_add_listener(lambda: _async_register_devices(hass, entry))
+    )
     entry.async_on_unload(
         coordinator.async_add_listener(lambda: _async_remove_stale_devices(hass, entry))
     )
