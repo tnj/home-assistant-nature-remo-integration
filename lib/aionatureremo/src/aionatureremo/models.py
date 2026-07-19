@@ -400,3 +400,61 @@ class SmartMeter:
     def cumulative_energy_reverse_kwh(self) -> float | None:
         """Cumulative sold energy in kWh."""
         return self._cumulative_kwh(EPC_REVERSE_CUMULATIVE_ENERGY)
+
+
+APPLIANCE_TYPE_AC = "AC"
+APPLIANCE_TYPE_TV = "TV"
+APPLIANCE_TYPE_LIGHT = "LIGHT"
+APPLIANCE_TYPE_IR = "IR"
+APPLIANCE_TYPE_SMART_METER = "EL_SMART_METER"
+
+
+@dataclass(frozen=True, slots=True)
+class Appliance:
+    """An appliance registered on a Nature Remo device."""
+
+    id: str
+    type: str
+    nickname: str
+    image: str
+    device_id: str | None
+    model: ApplianceModel | None
+    settings: AirconSettings | None
+    aircon: Aircon | None
+    tv: TV | None
+    light: Light | None
+    smart_meter: SmartMeter | None
+    signals: list[Signal]
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Appliance:
+        """Build from an API payload; absent sub-objects stay None."""
+        device = data.get("device") or {}
+        return cls(
+            id=str(data["id"]),
+            type=str(data.get("type") or ""),
+            nickname=str(data.get("nickname") or ""),
+            image=str(data.get("image") or ""),
+            device_id=str(device["id"]) if device.get("id") else None,
+            model=(
+                ApplianceModel.from_dict(data["model"]) if data.get("model") else None
+            ),
+            settings=(
+                AirconSettings.from_dict(data["settings"])
+                if data.get("settings")
+                else None
+            ),
+            aircon=Aircon.from_dict(data["aircon"]) if data.get("aircon") else None,
+            tv=TV.from_dict(data["tv"]) if data.get("tv") else None,
+            light=Light.from_dict(data["light"]) if data.get("light") else None,
+            smart_meter=(
+                SmartMeter.from_dict(data["smart_meter"])
+                if data.get("smart_meter")
+                else None
+            ),
+            signals=[
+                Signal.from_dict(item)
+                for item in data.get("signals") or []
+                if isinstance(item, dict) and "id" in item
+            ],
+        )

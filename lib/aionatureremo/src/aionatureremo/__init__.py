@@ -9,6 +9,11 @@ from .exceptions import (
     NatureRemoRateLimitError,
 )
 from .models import (
+    APPLIANCE_TYPE_AC,
+    APPLIANCE_TYPE_IR,
+    APPLIANCE_TYPE_LIGHT,
+    APPLIANCE_TYPE_SMART_METER,
+    APPLIANCE_TYPE_TV,
     ENERGY_UNIT_MULTIPLIERS,
     EVENT_HUMIDITY,
     EVENT_ILLUMINATION,
@@ -18,6 +23,7 @@ from .models import (
     Aircon,
     AirconModeRange,
     AirconSettings,
+    Appliance,
     ApplianceButton,
     ApplianceModel,
     Device,
@@ -36,6 +42,11 @@ __version__ = "0.1.0"
 
 __all__ = [
     "API_BASE_URL",
+    "APPLIANCE_TYPE_AC",
+    "APPLIANCE_TYPE_IR",
+    "APPLIANCE_TYPE_LIGHT",
+    "APPLIANCE_TYPE_SMART_METER",
+    "APPLIANCE_TYPE_TV",
     "ENERGY_UNIT_MULTIPLIERS",
     "EVENT_HUMIDITY",
     "EVENT_ILLUMINATION",
@@ -45,6 +56,7 @@ __all__ = [
     "Aircon",
     "AirconModeRange",
     "AirconSettings",
+    "Appliance",
     "ApplianceButton",
     "ApplianceModel",
     "Device",

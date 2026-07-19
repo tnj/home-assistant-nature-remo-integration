@@ -14,7 +14,15 @@ from .exceptions import (
     NatureRemoConnectionError,
     NatureRemoRateLimitError,
 )
-from .models import Device, RateLimit, User
+from .models import (
+    AirconSettings,
+    Appliance,
+    Device,
+    LightState,
+    RateLimit,
+    TVState,
+    User,
+)
 
 API_BASE_URL = "https://api.nature.global"
 _TIMEOUT = aiohttp.ClientTimeout(total=30)
@@ -114,3 +122,55 @@ class NatureRemoClient:
             data={"offset": str(offset)},
         )
         return Device.from_dict(data)
+
+    async def get_appliances(self) -> list[Appliance]:
+        """Return all appliances on the account."""
+        data = await self._request("GET", "/1/appliances")
+        return [Appliance.from_dict(item) for item in data]
+
+    async def set_aircon_settings(
+        self,
+        appliance_id: str,
+        *,
+        operation_mode: str | None = None,
+        temperature: str | None = None,
+        air_volume: str | None = None,
+        air_direction: str | None = None,
+        air_direction_h: str | None = None,
+        button: str | None = None,
+        temperature_unit: str | None = None,
+    ) -> AirconSettings:
+        """Update AC settings; only provided fields are sent."""
+        params = {
+            "operation_mode": operation_mode,
+            "temperature": temperature,
+            "air_volume": air_volume,
+            "air_direction": air_direction,
+            "air_direction_h": air_direction_h,
+            "button": button,
+            "temperature_unit": temperature_unit,
+        }
+        data = await self._request(
+            "POST",
+            f"/1/appliances/{appliance_id}/aircon_settings",
+            data={key: value for key, value in params.items() if value is not None},
+        )
+        return AirconSettings.from_dict(data or {})
+
+    async def send_tv_button(self, appliance_id: str, button: str) -> TVState:
+        """Press a TV button and return the new TV state."""
+        data = await self._request(
+            "POST", f"/1/appliances/{appliance_id}/tv", data={"button": button}
+        )
+        return TVState.from_dict(data or {})
+
+    async def send_light_button(self, appliance_id: str, button: str) -> LightState:
+        """Press a light button and return the new light state."""
+        data = await self._request(
+            "POST", f"/1/appliances/{appliance_id}/light", data={"button": button}
+        )
+        return LightState.from_dict(data or {})
+
+    async def send_signal(self, signal_id: str) -> None:
+        """Send a learned IR signal."""
+        await self._request("POST", f"/1/signals/{signal_id}/send")

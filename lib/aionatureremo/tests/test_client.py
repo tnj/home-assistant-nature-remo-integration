@@ -172,3 +172,84 @@ async def test_set_humidity_offset(
     device = await client.set_humidity_offset("device-1", -3)
 
     assert device.humidity_offset == -3.0
+
+
+async def test_get_appliances(client: NatureRemoClient, mock_api: aioresponses) -> None:
+    """Appliances endpoint parses into typed Appliance objects."""
+    mock_api.get(
+        f"{API}/1/appliances",
+        payload=[
+            {
+                "id": "appliance-tv-1",
+                "type": "TV",
+                "nickname": "Living TV",
+                "device": {"id": "device-1"},
+                "tv": {"state": {"input": "t"}, "buttons": [{"name": "power"}]},
+            }
+        ],
+    )
+
+    appliances = await client.get_appliances()
+
+    assert appliances[0].type == "TV"
+    assert appliances[0].tv is not None
+    assert appliances[0].tv.state.input == "t"
+
+
+async def test_set_aircon_settings(
+    client: NatureRemoClient, mock_api: aioresponses
+) -> None:
+    """Only provided kwargs are form-encoded; empty strings are kept."""
+    mock_api.post(
+        f"{API}/1/appliances/appliance-ac-1/aircon_settings",
+        payload={"temp": "27", "mode": "cool", "vol": "auto", "button": ""},
+    )
+
+    settings = await client.set_aircon_settings(
+        "appliance-ac-1",
+        operation_mode="cool",
+        temperature="27",
+        air_volume="auto",
+        button="",
+    )
+
+    assert settings.temperature == "27"
+    calls = list(mock_api.requests.values())[0]  # noqa: RUF015
+    assert calls[0].kwargs["data"] == {
+        "operation_mode": "cool",
+        "temperature": "27",
+        "air_volume": "auto",
+        "button": "",
+    }
+
+
+async def test_send_tv_button(client: NatureRemoClient, mock_api: aioresponses) -> None:
+    """TV button POST returns the new TV state."""
+    mock_api.post(f"{API}/1/appliances/appliance-tv-1/tv", payload={"input": "bs"})
+
+    state = await client.send_tv_button("appliance-tv-1", "bs")
+
+    assert state.input == "bs"
+    calls = list(mock_api.requests.values())[0]  # noqa: RUF015
+    assert calls[0].kwargs["data"] == {"button": "bs"}
+
+
+async def test_send_light_button(
+    client: NatureRemoClient, mock_api: aioresponses
+) -> None:
+    """Light button POST returns the new light state."""
+    mock_api.post(
+        f"{API}/1/appliances/appliance-light-1/light",
+        payload={"power": "off", "brightness": "100", "last_button": "off"},
+    )
+
+    state = await client.send_light_button("appliance-light-1", "off")
+
+    assert state.power == "off"
+
+
+async def test_send_signal(client: NatureRemoClient, mock_api: aioresponses) -> None:
+    """Signal send POSTs an empty body and returns None."""
+    mock_api.post(f"{API}/1/signals/signal-1/send", body="")
+
+    assert await client.send_signal("signal-1") is None

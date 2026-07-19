@@ -6,6 +6,7 @@ from aionatureremo import (
     TV,
     Aircon,
     AirconSettings,
+    Appliance,
     Device,
     Light,
     Signal,
@@ -234,3 +235,47 @@ def test_smart_meter_coefficient_defaults_to_one() -> None:
     )
 
     assert meter.cumulative_energy_kwh == 1.0
+
+
+def test_appliance_from_dict_ac() -> None:
+    """An AC appliance wires settings, aircon, model and device id."""
+    appliance = Appliance.from_dict(
+        {
+            "id": "appliance-ac-1",
+            "type": "AC",
+            "nickname": "Living AC",
+            "image": "ico_ac_1",
+            "device": {"id": "device-1", "name": "Living Remo"},
+            "model": {"id": "model-1", "manufacturer": "daikin", "name": "Daikin AC"},
+            "settings": {"temp": "26", "mode": "cool", "vol": "auto", "button": ""},
+            "aircon": AIRCON_PAYLOAD,
+            "signals": [],
+        }
+    )
+
+    assert appliance.type == "AC"
+    assert appliance.device_id == "device-1"
+    assert appliance.model is not None
+    assert appliance.model.manufacturer == "daikin"
+    assert appliance.settings is not None
+    assert appliance.settings.mode == "cool"
+    assert appliance.aircon is not None
+    assert "cool" in appliance.aircon.modes
+    assert appliance.tv is None
+    assert appliance.smart_meter is None
+
+
+def test_appliance_from_dict_ir_minimal() -> None:
+    """An IR appliance has signals and no sub-objects."""
+    appliance = Appliance.from_dict(
+        {
+            "id": "appliance-ir-1",
+            "type": "IR",
+            "nickname": "Fan",
+            "signals": [{"id": "signal-1", "name": "Power", "image": "ico_io"}],
+        }
+    )
+
+    assert appliance.device_id is None
+    assert appliance.model is None
+    assert [s.name for s in appliance.signals] == ["Power"]
