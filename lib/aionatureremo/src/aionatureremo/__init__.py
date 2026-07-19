@@ -9,6 +9,7 @@ from .exceptions import (
     NatureRemoRateLimitError,
 )
 from .models import (
+    ENERGY_UNIT_MULTIPLIERS,
     EVENT_HUMIDITY,
     EVENT_ILLUMINATION,
     EVENT_MOVEMENT,
@@ -20,11 +21,13 @@ from .models import (
     ApplianceButton,
     ApplianceModel,
     Device,
+    EchonetLiteProperty,
     Light,
     LightState,
     RateLimit,
     SensorValue,
     Signal,
+    SmartMeter,
     TVState,
     User,
 )
@@ -33,6 +36,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     "API_BASE_URL",
+    "ENERGY_UNIT_MULTIPLIERS",
     "EVENT_HUMIDITY",
     "EVENT_ILLUMINATION",
     "EVENT_MOVEMENT",
@@ -44,6 +48,7 @@ __all__ = [
     "ApplianceButton",
     "ApplianceModel",
     "Device",
+    "EchonetLiteProperty",
     "Light",
     "LightState",
     "NatureRemoApiError",
@@ -55,6 +60,7 @@ __all__ = [
     "RateLimit",
     "SensorValue",
     "Signal",
+    "SmartMeter",
     "TVState",
     "User",
 ]

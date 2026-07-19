@@ -301,3 +301,102 @@ class Signal:
             name=str(data.get("name") or ""),
             image=str(data.get("image") or ""),
         )
+
+
+EPC_COEFFICIENT = 211
+EPC_EFFECTIVE_DIGITS = 215
+EPC_NORMAL_CUMULATIVE_ENERGY = 224
+EPC_CUMULATIVE_ENERGY_UNIT = 225
+EPC_REVERSE_CUMULATIVE_ENERGY = 227
+EPC_INSTANTANEOUS_POWER = 231
+
+# ECHONET Lite EPC 0xE1 unit codes. Codes 10-13 MULTIPLY; a 10^-n shortcut
+# formula is wrong for them, so this must stay a lookup table.
+ENERGY_UNIT_MULTIPLIERS: dict[int, float] = {
+    0: 1.0,
+    1: 0.1,
+    2: 0.01,
+    3: 0.001,
+    4: 0.0001,
+    10: 10.0,
+    11: 100.0,
+    12: 1000.0,
+    13: 10000.0,
+}
+
+
+@dataclass(frozen=True, slots=True)
+class EchonetLiteProperty:
+    """A raw ECHONET Lite property exposed by a smart meter."""
+
+    name: str
+    epc: int
+    value: str
+    updated_at: datetime | None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EchonetLiteProperty:
+        """Build from an API payload."""
+        return cls(
+            name=str(data.get("name") or ""),
+            epc=int(data["epc"]),
+            value=str(data.get("val") or ""),
+            updated_at=_parse_datetime(data.get("updated_at")),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SmartMeter:
+    """An ECHONET Lite smart meter paired with a Nature Remo E."""
+
+    properties: list[EchonetLiteProperty]
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SmartMeter:
+        """Build from an API payload."""
+        return cls(
+            properties=[
+                EchonetLiteProperty.from_dict(item)
+                for item in data.get("echonetlite_properties") or []
+                if isinstance(item, dict) and "epc" in item
+            ]
+        )
+
+    def _int_property(self, epc: int) -> int | None:
+        """Return an EPC value as int, or None when absent/invalid."""
+        for prop in self.properties:
+            if prop.epc == epc:
+                try:
+                    return int(prop.value)
+                except ValueError:
+                    return None
+        return None
+
+    @property
+    def instantaneous_power_w(self) -> int | None:
+        """Instantaneous power in watts (negative = exporting)."""
+        return self._int_property(EPC_INSTANTANEOUS_POWER)
+
+    def _cumulative_kwh(self, epc: int) -> float | None:
+        """Scale a raw cumulative counter into kWh."""
+        raw = self._int_property(epc)
+        unit_code = self._int_property(EPC_CUMULATIVE_ENERGY_UNIT)
+        if raw is None or unit_code is None:
+            return None
+        multiplier = ENERGY_UNIT_MULTIPLIERS.get(unit_code)
+        if multiplier is None:
+            return None
+        coefficient = self._int_property(EPC_COEFFICIENT)
+        if coefficient is None:
+            coefficient = 1
+        return round(raw * coefficient * multiplier, 4)
+
+    @property
+    def cumulative_energy_kwh(self) -> float | None:
+        """Cumulative purchased energy in kWh."""
+        return self._cumulative_kwh(EPC_NORMAL_CUMULATIVE_ENERGY)
+
+    @property
+    def cumulative_energy_reverse_kwh(self) -> float | None:
+        """Cumulative sold energy in kWh."""
+        return self._cumulative_kwh(EPC_REVERSE_CUMULATIVE_ENERGY)

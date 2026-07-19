@@ -9,6 +9,7 @@ from aionatureremo import (
     Device,
     Light,
     Signal,
+    SmartMeter,
 )
 
 DEVICE_PAYLOAD = {
@@ -153,3 +154,83 @@ def test_signal_from_dict() -> None:
 
     assert signal.id == "signal-1"
     assert signal.name == "Power"
+
+
+def _meter(props: list[dict[str, object]]) -> SmartMeter:
+    return SmartMeter.from_dict({"echonetlite_properties": props})
+
+
+SMART_METER_PROPS: list[dict[str, object]] = [
+    {
+        "name": "coefficient",
+        "epc": 211,
+        "val": "1",
+        "updated_at": "2026-07-18T07:00:00Z",
+    },
+    {
+        "name": "cumulative_electric_energy_effective_digits",
+        "epc": 215,
+        "val": "6",
+    },
+    {
+        "name": "normal_direction_cumulative_electric_energy",
+        "epc": 224,
+        "val": "123456",
+    },
+    {"name": "cumulative_electric_energy_unit", "epc": 225, "val": "1"},
+    {
+        "name": "reverse_direction_cumulative_electric_energy",
+        "epc": 227,
+        "val": "1234",
+    },
+    {"name": "measured_instantaneous", "epc": 231, "val": "520"},
+]
+
+
+def test_smart_meter_energy_math() -> None:
+    """kWh = raw x coefficient x unit multiplier; power is raw watts."""
+    meter = _meter(SMART_METER_PROPS)
+
+    assert meter.instantaneous_power_w == 520
+    assert meter.cumulative_energy_kwh == 12345.6
+    assert meter.cumulative_energy_reverse_kwh == 123.4
+
+
+def test_smart_meter_multiplying_unit_codes() -> None:
+    """Unit codes 10-13 multiply (a naive 10^-n formula would be wrong)."""
+    meter = _meter(
+        [
+            {"epc": 224, "val": "5", "name": "normal"},
+            {"epc": 225, "val": "11", "name": "unit"},
+        ]
+    )
+
+    assert meter.cumulative_energy_kwh == 500.0
+
+
+def test_smart_meter_negative_power() -> None:
+    """Instantaneous power is signed (negative = exporting)."""
+    meter = _meter([{"epc": 231, "val": "-300", "name": "instant"}])
+
+    assert meter.instantaneous_power_w == -300
+
+
+def test_smart_meter_missing_unit_returns_none() -> None:
+    """Without EPC 225 the cumulative energy cannot be scaled."""
+    meter = _meter([{"epc": 224, "val": "123456", "name": "normal"}])
+
+    assert meter.cumulative_energy_kwh is None
+    assert meter.cumulative_energy_reverse_kwh is None
+    assert meter.instantaneous_power_w is None
+
+
+def test_smart_meter_coefficient_defaults_to_one() -> None:
+    """Missing coefficient (EPC 211) defaults to 1."""
+    meter = _meter(
+        [
+            {"epc": 224, "val": "100", "name": "normal"},
+            {"epc": 225, "val": "2", "name": "unit"},
+        ]
+    )
+
+    assert meter.cumulative_energy_kwh == 1.0
