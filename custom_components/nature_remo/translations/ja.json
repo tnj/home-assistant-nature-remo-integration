@@ -40,5 +40,11 @@
       "reconfigure_successful": "再設定に成功しました",
       "wrong_account": "トークンが別の Nature アカウントのものです"
     }
+  },
+  "entity": {
+    "sensor": {
+      "illuminance": { "name": "明るさ" },
+      "last_motion": { "name": "最終人感検知" }
+    }
   }
 }

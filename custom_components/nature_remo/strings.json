@@ -40,5 +40,11 @@
       "reconfigure_successful": "Re-configuration was successful",
       "wrong_account": "The token belongs to a different Nature account"
     }
+  },
+  "entity": {
+    "sensor": {
+      "illuminance": { "name": "Illuminance" },
+      "last_motion": { "name": "Last motion" }
+    }
   }
 }
