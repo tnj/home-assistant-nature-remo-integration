@@ -19,7 +19,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
-from .entity import NatureRemoApplianceEntity
+from .entity import NatureRemoApplianceEntity, command_error_message
 
 PARALLEL_UPDATES = 1
 
@@ -82,7 +82,7 @@ class NatureRemoTVRemote(NatureRemoApplianceEntity, RemoteEntity):
             )
         except NatureRemoError as err:
             raise HomeAssistantError(
-                f"Failed to control {appliance.nickname}: {err}"
+                command_error_message(f"Failed to control {appliance.nickname}", err)
             ) from err
         if appliance.tv is not None:
             self.coordinator.async_update_appliance(

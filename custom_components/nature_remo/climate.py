@@ -25,7 +25,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
-from .entity import NatureRemoApplianceEntity
+from .entity import NatureRemoApplianceEntity, command_error_message
 
 PARALLEL_UPDATES = 1
 
@@ -327,7 +327,7 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
             )
         except NatureRemoError as err:
             raise HomeAssistantError(
-                f"Failed to update {appliance.nickname}: {err}"
+                command_error_message(f"Failed to update {appliance.nickname}", err)
             ) from err
         self.coordinator.async_update_appliance(
             replace(appliance, settings=new_settings)

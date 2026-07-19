@@ -23,7 +23,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
-from .entity import NatureRemoDeviceEntity
+from .entity import NatureRemoDeviceEntity, command_error_message
 
 PARALLEL_UPDATES = 1
 
@@ -125,5 +125,7 @@ class NatureRemoOffsetNumber(NatureRemoDeviceEntity, NumberEntity):
                 self.coordinator.client, self._device_id, int(value)
             )
         except NatureRemoError as err:
-            raise HomeAssistantError(f"Failed to update the offset: {err}") from err
+            raise HomeAssistantError(
+                command_error_message("Failed to update the offset", err)
+            ) from err
         self.coordinator.async_update_device(device)

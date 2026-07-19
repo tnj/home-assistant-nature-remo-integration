@@ -16,7 +16,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
-from .entity import NatureRemoApplianceEntity
+from .entity import NatureRemoApplianceEntity, command_error_message
 
 PARALLEL_UPDATES = 1
 
@@ -92,7 +92,9 @@ class NatureRemoSignalButton(NatureRemoApplianceEntity, ButtonEntity):
         try:
             await self.coordinator.client.send_signal(self._signal_id)
         except NatureRemoError as err:
-            raise HomeAssistantError(f"Failed to send IR signal: {err}") from err
+            raise HomeAssistantError(
+                command_error_message("Failed to send IR signal", err)
+            ) from err
 
 
 class NatureRemoLightButton(NatureRemoApplianceEntity, ButtonEntity):
@@ -122,7 +124,7 @@ class NatureRemoLightButton(NatureRemoApplianceEntity, ButtonEntity):
             )
         except NatureRemoError as err:
             raise HomeAssistantError(
-                f"Failed to control {appliance.nickname}: {err}"
+                command_error_message(f"Failed to control {appliance.nickname}", err)
             ) from err
         if appliance.light is not None:
             self.coordinator.async_update_appliance(

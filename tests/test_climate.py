@@ -252,14 +252,15 @@ async def test_climate_set_fan_and_swing_modes(
 async def test_climate_command_failure_raises(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
 ) -> None:
-    """API failures surface as HomeAssistantError."""
+    """A 429 surfaces as HomeAssistantError including the reset epoch (spec 5.5)."""
     mock_client.set_aircon_settings.side_effect = NatureRemoRateLimitError(
         429, "limited", reset=1752825600
     )
-    with pytest.raises(HomeAssistantError, match="Living AC"):
+    with pytest.raises(HomeAssistantError, match="Living AC") as exc_info:
         await hass.services.async_call(
             CLIMATE_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: ENTITY}, blocking=True
         )
+    assert "1752825600" in str(exc_info.value)
 
 
 async def test_climate_set_hvac_mode_off(
