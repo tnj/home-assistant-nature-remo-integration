@@ -57,6 +57,15 @@
           "cs": "CS"
         }
       }
+    },
+    "button": {
+      "night": { "name": "常夜灯" },
+      "on_100": { "name": "全灯" },
+      "on_favorite": { "name": "お気に入り" },
+      "bright_up": { "name": "明るく" },
+      "bright_down": { "name": "暗く" },
+      "colortemp_up": { "name": "色温度を上げる" },
+      "colortemp_down": { "name": "色温度を下げる" }
     }
   }
 }

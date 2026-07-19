@@ -10,6 +10,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
 
 PLATFORMS: list[Platform] = [
+    Platform.BUTTON,
     Platform.CLIMATE,
     Platform.LIGHT,
     Platform.REMOTE,

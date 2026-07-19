@@ -57,6 +57,15 @@
           "cs": "CS"
         }
       }
+    },
+    "button": {
+      "night": { "name": "Night light" },
+      "on_100": { "name": "Full brightness" },
+      "on_favorite": { "name": "Favorite" },
+      "bright_up": { "name": "Brightness up" },
+      "bright_down": { "name": "Brightness down" },
+      "colortemp_up": { "name": "Color temperature up" },
+      "colortemp_down": { "name": "Color temperature down" }
     }
   }
 }
