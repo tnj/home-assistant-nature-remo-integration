@@ -47,6 +47,16 @@
       "last_motion": { "name": "Last motion" },
       "cumulative_energy_normal": { "name": "Purchased energy" },
       "cumulative_energy_reverse": { "name": "Sold energy" }
+    },
+    "select": {
+      "tv_input": {
+        "name": "Input",
+        "state": {
+          "t": "Terrestrial",
+          "bs": "BS",
+          "cs": "CS"
+        }
+      }
     }
   }
 }

@@ -47,6 +47,16 @@
       "last_motion": { "name": "最終人感検知" },
       "cumulative_energy_normal": { "name": "買電量" },
       "cumulative_energy_reverse": { "name": "売電量" }
+    },
+    "select": {
+      "tv_input": {
+        "name": "入力切替",
+        "state": {
+          "t": "地上波",
+          "bs": "BS",
+          "cs": "CS"
+        }
+      }
     }
   }
 }
