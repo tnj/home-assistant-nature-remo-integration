@@ -64,22 +64,23 @@ class NatureRemoClient:
                 f"Error connecting to the Nature API: {err}"
             ) from err
 
-        self._track_rate_limit(response.headers)
+        async with response:
+            self._track_rate_limit(response.headers)
 
-        if response.status == 401:
-            raise NatureRemoAuthError(response.status, "Invalid access token")
-        if response.status == 429:
-            raise NatureRemoRateLimitError(
-                response.status,
-                "API rate limit exceeded",
-                reset=self.rate_limit.reset,
-            )
-        if response.status >= 400:
-            body = await response.text()
-            raise NatureRemoApiError(response.status, body[:200])
+            if response.status == 401:
+                raise NatureRemoAuthError(response.status, "Invalid access token")
+            if response.status == 429:
+                raise NatureRemoRateLimitError(
+                    response.status,
+                    "API rate limit exceeded",
+                    reset=self.rate_limit.reset,
+                )
+            if response.status >= 400:
+                body = await response.text()
+                raise NatureRemoApiError(response.status, body[:200])
 
-        text = await response.text()
-        return json.loads(text) if text else None
+            text = await response.text()
+            return json.loads(text) if text else None
 
     def _track_rate_limit(self, headers: CIMultiDictProxy[str]) -> None:
         """Update rate limit state from response headers, if present."""

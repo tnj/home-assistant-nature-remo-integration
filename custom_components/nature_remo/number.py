@@ -122,7 +122,7 @@ class NatureRemoOffsetNumber(NatureRemoDeviceEntity, NumberEntity):
         """Write the offset and apply the returned device state."""
         try:
             device = await self.entity_description.set_fn(
-                self.coordinator.client, self._device_id, int(value)
+                self.coordinator.client, self._device_id, round(value)
             )
         except NatureRemoError as err:
             raise HomeAssistantError(

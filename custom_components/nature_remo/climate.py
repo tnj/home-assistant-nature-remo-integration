@@ -23,6 +23,7 @@ from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.util.unit_conversion import TemperatureConverter
 
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
 from .entity import NatureRemoApplianceEntity, command_error_message
@@ -225,8 +226,17 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
 
     @property
     def current_temperature(self) -> float | None:
-        """Room temperature from the bound Remo."""
-        return self._device_event_value(EVENT_TEMPERATURE)
+        """Room temperature from the bound Remo.
+
+        Nature always reports `te` in Celsius, regardless of the AC's
+        temperature_unit, so convert when this entity's unit is Fahrenheit.
+        """
+        value = self._device_event_value(EVENT_TEMPERATURE)
+        if value is None or self.temperature_unit != UnitOfTemperature.FAHRENHEIT:
+            return value
+        return TemperatureConverter.convert(
+            value, UnitOfTemperature.CELSIUS, UnitOfTemperature.FAHRENHEIT
+        )
 
     @property
     def current_humidity(self) -> float | None:

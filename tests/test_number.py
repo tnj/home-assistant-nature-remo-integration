@@ -58,3 +58,25 @@ async def test_set_temperature_offset(
     state = hass.states.get("number.living_remo_temperature_offset")
     assert state is not None
     assert state.state == "2.0"
+
+
+async def test_set_temperature_offset_rounds_fractional_value(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    devices: list[Device],
+) -> None:
+    """A fractional value rounds instead of truncating toward zero."""
+    mock_client.set_temperature_offset.return_value = replace(
+        devices[0], temperature_offset=2.0
+    )
+    await hass.services.async_call(
+        NUMBER_DOMAIN,
+        SERVICE_SET_VALUE,
+        {
+            ATTR_ENTITY_ID: "number.living_remo_temperature_offset",
+            ATTR_VALUE: 1.6,
+        },
+        blocking=True,
+    )
+    mock_client.set_temperature_offset.assert_called_once_with("device-remo3-1", 2)

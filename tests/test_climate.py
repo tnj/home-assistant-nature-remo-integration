@@ -31,6 +31,7 @@ from homeassistant.components.climate import (
 from homeassistant.components.climate import (
     DOMAIN as CLIMATE_DOMAIN,
 )
+from homeassistant.components.climate.const import DEFAULT_MAX_TEMP, DEFAULT_MIN_TEMP
 from homeassistant.const import (
     ATTR_ENTITY_ID,
     ATTR_TEMPERATURE,
@@ -336,6 +337,20 @@ def test_climate_fahrenheit_unit(
     assert entity.temperature_unit == UnitOfTemperature.FAHRENHEIT
 
 
+def test_climate_fahrenheit_current_temperature_converted(
+    appliances: list[Appliance], devices: list[Device]
+) -> None:
+    """The `te` reading (always Celsius) is converted for a Fahrenheit AC."""
+    ac = next(a for a in appliances if a.id == "appliance-ac-1")
+    entity = _ac_entity(
+        appliances,
+        devices,
+        replace(ac, settings=replace(ac.settings, temperature_unit="f")),
+    )
+    # Fixture device-remo3-1 reports te=26.4 (Celsius); 26.4 C == 79.52 F.
+    assert round(entity.current_temperature, 1) == 79.5
+
+
 def test_climate_without_aircon_uses_default_limits(
     appliances: list[Appliance], devices: list[Device]
 ) -> None:
@@ -345,7 +360,8 @@ def test_climate_without_aircon_uses_default_limits(
 
     assert entity._absolute_temperatures() == []
     # Falls through to ClimateEntity's default min/max (no per-mode ranges).
-    assert entity.min_temp < entity.max_temp
+    assert entity.min_temp == DEFAULT_MIN_TEMP
+    assert entity.max_temp == DEFAULT_MAX_TEMP
 
 
 def test_climate_current_readings_without_device(
