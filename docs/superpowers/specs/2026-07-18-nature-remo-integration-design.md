@@ -114,7 +114,7 @@
 ### 5.3 Coordinator
 
 - 単一 `NatureRemoCoordinator(DataUpdateCoordinator[NatureRemoData])`、`update_interval = 60秒`、コンストラクタに `config_entry` を渡す（現行コア要件）。
-- `_async_update_data`: `asyncio.gather(get_devices(), get_appliances())`（2 コール/周期 × 5 周期 = 10 コール/5分、制限 30 の安全圏）→ `NatureRemoData(devices: dict[id, Device], appliances: dict[id, Appliance])`。
+- `_async_update_data`: `get_devices()` → `get_appliances()` を直列 await（エラー帰属を決定的にするため。gather と同じく 2 コール/周期 × 5 周期 = 10 コール/5分、制限 30 の安全圏）→ `NatureRemoData(devices: dict[id, Device], appliances: dict[id, Appliance])`。
 - 例外変換: `NatureRemoAuthError → ConfigEntryAuthFailed`（reauth 起動）/ `NatureRemoRateLimitError・NatureRemoConnectionError・NatureRemoApiError → UpdateFailed`（429 は reset 時刻をメッセージに含める）。
 - **楽観的更新**: コマンド応答（aircon_settings / tv / light / offset の新状態）で coordinator データを書き換え `async_set_updated_data()` → UI 即時反映。次回ポーリングで真値と同期。
 
@@ -162,7 +162,7 @@
 - remote: `unique_id = {appliance_id}`、`assumed_state = True`、`is_on = None`。
   - `send_command(command, num_repeats, delay_secs)`: 各コマンド名を `tv.buttons[].name` と照合（不明は `ServiceValidationError`）→ `POST /tv`。repeats/delay を尊重。
   - `turn_on / turn_off`: `power` ボタン送信（トグル前提）。`power` ボタンが無い機種では `ServiceValidationError`（remote の turn_on/off はベース機能のため無効化不可）。
-- select 入力切替: `tv.state.input`（`t`/`bs`/`cs`）を current に、**対応するボタンが `tv.buttons` に存在する場合のみ生成**。option 選択でそのボタンを送信し、`state.input` を楽観的更新。状態表示は translation（地上波/BS/CS）。**実機でボタン名を要検証**（検証ポイント §9）。
+- select 入力切替: `tv.state.input`（`t`/`bs`/`cs`）を current に、**対応するボタンが `tv.buttons` に2つ以上存在する場合のみ生成**（1択の select は無意味なため）。option 選択でそのボタンを送信し、`state.input` を楽観的更新。状態表示は translation（地上波/BS/CS）。**実機でボタン名を要検証**（検証ポイント §9）。
 
 ### 6.4 LIGHT → light + button
 
