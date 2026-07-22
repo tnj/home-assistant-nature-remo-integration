@@ -20,8 +20,7 @@ custom component; see [docs/CORE_SUBMISSION.md](docs/CORE_SUBMISSION.md)).
 ## Installation (manual, pre-release)
 
 1. Install the client library into your Home Assistant Python environment:
-   `pip install aionatureremo` (before the PyPI release:
-   `pip install git+https://github.com/tnj/aionatureremo`).
+   `pip install aionatureremo`.
 2. Copy `custom_components/nature_remo/` into `<config>/custom_components/`.
 3. Restart Home Assistant.
 

@@ -496,11 +496,15 @@ wheels = [
 [[package]]
 name = "aionatureremo"
 version = "0.1.0"
-source = { git = "https://github.com/tnj/aionatureremo#25a09596af61ed334b09ea112259e08c869a6e15" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp", version = "3.11.16", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13.2'" },
     { name = "aiohttp", version = "3.13.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13.2' and python_full_version < '3.14.2'" },
     { name = "aiohttp", version = "3.14.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14.2'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/16/b0/33bbd05b76cdb4df6222b75295c12ba22f69f89d53b8186d275a59849ffc/aionatureremo-0.1.0.tar.gz", hash = "sha256:17c121dc181ab4c1bfac5f810b74d4a253d4e9998d0eaf624e881e262756295e", size = 11477, upload-time = "2026-07-22T10:09:47.56Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/c1/d6380a4b891658488858a16b76251145fbb6cd1d898a1a08dbf245652b8a/aionatureremo-0.1.0-py3-none-any.whl", hash = "sha256:d384d71c2f141fb8e9f0999d23c14ba90570448c6eb431fd8f3b94ad26ebeb3c", size = 8878, upload-time = "2026-07-22T10:09:46.321Z" },
 ]
 
 [[package]]
@@ -3046,7 +3050,7 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "aionatureremo", git = "https://github.com/tnj/aionatureremo" },
+    { name = "aionatureremo" },
     { name = "aioresponses", specifier = ">=0.7.6" },
     { name = "homeassistant" },
     { name = "mypy", specifier = ">=1.14.0" },

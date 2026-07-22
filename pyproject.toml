@@ -18,10 +18,6 @@ dev = [
     "mypy>=1.14.0",
 ]
 
-[tool.uv.sources]
-# Until aionatureremo is published to PyPI, resolve it from its repository.
-aionatureremo = { git = "https://github.com/tnj/aionatureremo" }
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

@@ -97,7 +97,7 @@
 
 - `type NatureRemoConfigEntry = ConfigEntry[NatureRemoCoordinator]`、データは `entry.runtime_data`（Bronze `runtime-data`）。
 - `async_setup_entry`: クライアント生成（共有セッション注入）→ coordinator `async_config_entry_first_refresh()`（`test-before-setup`）→ 各プラットフォームへ forward → 動的デバイス/stale 掃除のリスナー登録。
-- `manifest.json`: `iot_class: cloud_polling`、`integration_type: hub`、`config_flow: true`、`requirements: ["aionatureremo==0.1.0"]`（実バージョンを記載。PyPI 公開前の開発中は、HA 環境へ `pip install git+https://github.com/tnj/aionatureremo` しておけば要件充足済みと判定されインストールは走らない。この手順を README に記載）、`codeowners`、`loggers: ["aionatureremo"]`。
+- `manifest.json`: `iot_class: cloud_polling`、`integration_type: hub`、`config_flow: true`、`requirements: ["aionatureremo==0.1.0"]`（実バージョンを記載。aionatureremo 0.1.0 は 2026-07-22 に PyPI 公開済み — Trusted Publishing・attestation 付き）、`codeowners`、`loggers: ["aionatureremo"]`。
 
 ### 5.2 Config flow
 
