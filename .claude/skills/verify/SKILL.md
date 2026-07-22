@@ -10,7 +10,7 @@ mkdir -p config && ln -sfn ../custom_components config/custom_components
 uv run hass -c config --log-file config/home-assistant.log   # background, sandbox disabled (port 8123 + network)
 ```
 
-- First boot: onboarding at http://localhost:8123 (dev instance user: `dev` / `nature-remo-dev!` if reusing the committed .storage-less config dir).
+- First boot: onboarding at http://localhost:8123 creates a local dev user (config/ is gitignored, so each fresh clone onboards anew; pick any throwaway credentials).
 - Add the integration: 設定 → デバイスとサービス → 統合を追加 → "Nature Remo" → paste a token from https://home.nature.global/.
 - A real token can be kept (untracked) in `.superpowers/nature_token` — ALWAYS `printf '%s'` (no trailing newline; aiohttp rejects newline in headers) and pass via `$(cat ...)`.
 
