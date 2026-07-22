@@ -9,3 +9,4 @@ htmlcov/
 dist/
 config/
 .superpowers/
+.playwright-mcp/

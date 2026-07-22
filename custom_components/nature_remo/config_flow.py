@@ -32,7 +32,10 @@ class NatureRemoConfigFlow(ConfigFlow, domain=DOMAIN):
             return await client.get_user()
         except NatureRemoAuthError:
             errors["base"] = "invalid_auth"
-        except NatureRemoError:
+        except NatureRemoError as err:
+            # cannot_connect covers 429s and transient network trouble; keep a
+            # trace so the cause is diagnosable from the log.
+            _LOGGER.debug("Token validation failed: %s", err)
             errors["base"] = "cannot_connect"
         except Exception:
             _LOGGER.exception("Unexpected error validating the access token")
