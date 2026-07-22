@@ -31,7 +31,7 @@ Steps to move this integration from `custom_components/` into
 
 ## 4. Follow-up PRs
 
-climate → light/remote/select/button/number → diagnostics & dynamic/stale
+climate → light/remote/button/number → diagnostics & dynamic/stale
 devices. One platform (or one coherent feature) per PR.
 
 ## 5. Documentation PRs
