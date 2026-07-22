@@ -81,7 +81,9 @@
         { "name": "vol-down", "image": "ico_vol_down", "label": "TV_vol_down" },
         { "name": "mute", "image": "ico_mute", "label": "TV_mute" },
         { "name": "ch-up", "image": "ico_ch_up", "label": "TV_ch_up" },
-        { "name": "ch-down", "image": "ico_ch_down", "label": "TV_ch_down" }
+        { "name": "ch-down", "image": "ico_ch_down", "label": "TV_ch_down" },
+        { "name": "input", "image": "ico_input_legacy", "label": "TV_input" },
+        { "name": "", "image": "", "label": "" }
       ]
     },
     "signals": []

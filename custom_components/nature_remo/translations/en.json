@@ -89,6 +89,159 @@
       },
       "select_input_src": {
         "name": "Input"
+      },
+      "power": {
+        "name": "Power"
+      },
+      "mute": {
+        "name": "Mute"
+      },
+      "vol_up": {
+        "name": "Volume up"
+      },
+      "vol_down": {
+        "name": "Volume down"
+      },
+      "ch_up": {
+        "name": "Next channel"
+      },
+      "ch_down": {
+        "name": "Previous channel"
+      },
+      "ch_1": {
+        "name": "Channel 1"
+      },
+      "ch_2": {
+        "name": "Channel 2"
+      },
+      "ch_3": {
+        "name": "Channel 3"
+      },
+      "ch_4": {
+        "name": "Channel 4"
+      },
+      "ch_5": {
+        "name": "Channel 5"
+      },
+      "ch_6": {
+        "name": "Channel 6"
+      },
+      "ch_7": {
+        "name": "Channel 7"
+      },
+      "ch_8": {
+        "name": "Channel 8"
+      },
+      "ch_9": {
+        "name": "Channel 9"
+      },
+      "ch_10": {
+        "name": "Channel 10"
+      },
+      "ch_11": {
+        "name": "Channel 11"
+      },
+      "ch_12": {
+        "name": "Channel 12"
+      },
+      "up": {
+        "name": "Up"
+      },
+      "down": {
+        "name": "Down"
+      },
+      "left": {
+        "name": "Left"
+      },
+      "right": {
+        "name": "Right"
+      },
+      "ok": {
+        "name": "OK"
+      },
+      "back": {
+        "name": "Back"
+      },
+      "exit": {
+        "name": "Exit"
+      },
+      "home": {
+        "name": "Home"
+      },
+      "settings": {
+        "name": "Settings"
+      },
+      "submenu": {
+        "name": "Submenu"
+      },
+      "display": {
+        "name": "Display"
+      },
+      "d": {
+        "name": "Data broadcast"
+      },
+      "tv_schedule": {
+        "name": "Program guide"
+      },
+      "select_audio": {
+        "name": "Audio track"
+      },
+      "blue": {
+        "name": "Blue"
+      },
+      "red": {
+        "name": "Red"
+      },
+      "green": {
+        "name": "Green"
+      },
+      "yellow": {
+        "name": "Yellow"
+      },
+      "play": {
+        "name": "Play"
+      },
+      "pause": {
+        "name": "Pause"
+      },
+      "stop": {
+        "name": "Stop"
+      },
+      "prev": {
+        "name": "Previous"
+      },
+      "next": {
+        "name": "Next"
+      },
+      "fast_rewind": {
+        "name": "Fast rewind"
+      },
+      "fast_forward": {
+        "name": "Fast forward"
+      },
+      "record": {
+        "name": "Record"
+      },
+      "rewind_10_sec": {
+        "name": "Rewind 10 seconds"
+      },
+      "forward_30_sec": {
+        "name": "Forward 30 seconds"
+      },
+      "clear_sound": {
+        "name": "Clear sound"
+      },
+      "rec_list": {
+        "name": "Recording list"
+      },
+      "program_info": {
+        "name": "Program info"
+      },
+      "subtitle": {
+        "name": "Subtitles"
+      },
+      "tool": {
+        "name": "Tools"
       }
     },
     "number": {

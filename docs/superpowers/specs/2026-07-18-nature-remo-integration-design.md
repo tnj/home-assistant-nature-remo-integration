@@ -158,7 +158,8 @@
 - remote: `unique_id = {appliance_id}`、`assumed_state = True`、`is_on = None`。
   - `send_command(command, num_repeats, delay_secs)`: 各コマンド名を `tv.buttons[].name` と照合（不明は `ServiceValidationError`）→ `POST /tv`。repeats/delay を尊重。
   - `turn_on / turn_off`: `power` ボタン送信（トグル前提）。`power` ボタンが無い機種では `ServiceValidationError`（remote の turn_on/off はベース機能のため無効化不可）。
-- 放送/入力切替ボタン: `tv.state.input` はクラウド側バーチャルリモコンの帯域モードであり TV 本体の状態ではないと実機検証で判明した（**TV の電源が OFF の間も値が変化する**）。one-way IR ブリッジで「現在の入力」を名乗る select エンティティは不誠実なため、current state を持たない button 4種に置き換え: `tv.buttons` に存在すれば `input-terrestrial`（地デジ）/ `input-bs`（BS）/ `input-cs`（CS）/ `select-input-src`（入力切替、TV 本体の入力切替ボタン）を button として生成。押下は `send_tv_button` を呼ぶのみで、状態の楽観的更新は行わない（ステートレス）。
+- 放送/入力切替ボタン: `tv.state.input` はクラウド側バーチャルリモコンの帯域モードであり TV 本体の状態ではないと実機検証で判明した（**TV の電源が OFF の間も値が変化する**）。one-way IR ブリッジで「現在の入力」を名乗る select エンティティは不誠実なため、current state を持たない button に置き換え: `tv.buttons` に存在すれば `input-terrestrial`（地デジ）/ `input-bs`（BS）/ `input-cs`（CS）/ `select-input-src`（入力切替、TV 本体の入力切替ボタン）を button として生成。押下は `send_tv_button` を呼ぶのみで、状態の楽観的更新は行わない（ステートレス）。
+- 全ボタンの button 化: Nature API は `tv.buttons[]` で家電ごとのプリセットボタンを一意に列挙する（`name`/`label`/`image`）。この列挙可能性を活かし、`name` が空でなく同一家電内で重複しないすべてのボタンを button エンティティ化する（`unique_id = {appliance_id}_button_{name}`。`name` が空または重複するものはスキップ）。上記の放送/入力切替ショートカット4種のみ既定で有効とし、それ以外の全ボタンは `entity_registry_enabled_default = False` で生成する（`entity-disabled-by-default` ルール準拠。エンティティ一覧には登録されるが既定では無効、ワンクリックで有効化可能）。命名は電源/消音/音量/チャンネル/カーソル/決定/色/再生系など既知の語彙（約40語）を翻訳キー化し、語彙にない名前は LIGHT の追加ボタンと同じフォールバックで API 提供の `label`(なければ `name`)をそのまま名前にする。
 
 ### 6.4 LIGHT → light + button
 

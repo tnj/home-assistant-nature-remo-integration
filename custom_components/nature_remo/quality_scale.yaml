@@ -55,8 +55,8 @@ rules:
   entity-category: done
   entity-device-class: done
   entity-disabled-by-default:
-    status: exempt
-    comment: No noisy or rarely used entities are created.
+    status: done
+    comment: Bulk TV buttons are disabled by default; only broadcast/input shortcuts are enabled.
   entity-translations: done
   exception-translations: todo
   icon-translations: done

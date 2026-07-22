@@ -19,7 +19,23 @@
       "input_terrestrial": { "default": "mdi:radio-tower" },
       "input_bs": { "default": "mdi:satellite-variant" },
       "input_cs": { "default": "mdi:satellite-variant" },
-      "select_input_src": { "default": "mdi:video-input-hdmi" }
+      "select_input_src": { "default": "mdi:video-input-hdmi" },
+      "power": { "default": "mdi:power" },
+      "mute": { "default": "mdi:volume-mute" },
+      "vol_up": { "default": "mdi:volume-plus" },
+      "vol_down": { "default": "mdi:volume-minus" },
+      "ch_up": { "default": "mdi:arrow-up-bold" },
+      "ch_down": { "default": "mdi:arrow-down-bold" },
+      "tv_schedule": { "default": "mdi:calendar-month" },
+      "play": { "default": "mdi:play" },
+      "pause": { "default": "mdi:pause" },
+      "stop": { "default": "mdi:stop" },
+      "record": { "default": "mdi:record-rec" },
+      "back": { "default": "mdi:arrow-left" },
+      "ok": { "default": "mdi:check-circle-outline" },
+      "home": { "default": "mdi:home" },
+      "settings": { "default": "mdi:cog" },
+      "subtitle": { "default": "mdi:subtitles" }
     }
   }
 }

@@ -89,6 +89,159 @@
       },
       "select_input_src": {
         "name": "入力切替"
+      },
+      "power": {
+        "name": "電源"
+      },
+      "mute": {
+        "name": "消音"
+      },
+      "vol_up": {
+        "name": "音量を上げる"
+      },
+      "vol_down": {
+        "name": "音量を下げる"
+      },
+      "ch_up": {
+        "name": "次のチャンネル"
+      },
+      "ch_down": {
+        "name": "前のチャンネル"
+      },
+      "ch_1": {
+        "name": "チャンネル1"
+      },
+      "ch_2": {
+        "name": "チャンネル2"
+      },
+      "ch_3": {
+        "name": "チャンネル3"
+      },
+      "ch_4": {
+        "name": "チャンネル4"
+      },
+      "ch_5": {
+        "name": "チャンネル5"
+      },
+      "ch_6": {
+        "name": "チャンネル6"
+      },
+      "ch_7": {
+        "name": "チャンネル7"
+      },
+      "ch_8": {
+        "name": "チャンネル8"
+      },
+      "ch_9": {
+        "name": "チャンネル9"
+      },
+      "ch_10": {
+        "name": "チャンネル10"
+      },
+      "ch_11": {
+        "name": "チャンネル11"
+      },
+      "ch_12": {
+        "name": "チャンネル12"
+      },
+      "up": {
+        "name": "上"
+      },
+      "down": {
+        "name": "下"
+      },
+      "left": {
+        "name": "左"
+      },
+      "right": {
+        "name": "右"
+      },
+      "ok": {
+        "name": "決定"
+      },
+      "back": {
+        "name": "戻る"
+      },
+      "exit": {
+        "name": "終了"
+      },
+      "home": {
+        "name": "ホーム"
+      },
+      "settings": {
+        "name": "設定"
+      },
+      "submenu": {
+        "name": "サブメニュー"
+      },
+      "display": {
+        "name": "画面表示"
+      },
+      "d": {
+        "name": "データ放送"
+      },
+      "tv_schedule": {
+        "name": "番組表"
+      },
+      "select_audio": {
+        "name": "音声切換"
+      },
+      "blue": {
+        "name": "青"
+      },
+      "red": {
+        "name": "赤"
+      },
+      "green": {
+        "name": "緑"
+      },
+      "yellow": {
+        "name": "黄"
+      },
+      "play": {
+        "name": "再生"
+      },
+      "pause": {
+        "name": "一時停止"
+      },
+      "stop": {
+        "name": "停止"
+      },
+      "prev": {
+        "name": "前へ"
+      },
+      "next": {
+        "name": "次へ"
+      },
+      "fast_rewind": {
+        "name": "早戻し"
+      },
+      "fast_forward": {
+        "name": "早送り"
+      },
+      "record": {
+        "name": "録画"
+      },
+      "rewind_10_sec": {
+        "name": "10秒戻し"
+      },
+      "forward_30_sec": {
+        "name": "30秒送り"
+      },
+      "clear_sound": {
+        "name": "クリア音声"
+      },
+      "rec_list": {
+        "name": "録画リスト"
+      },
+      "program_info": {
+        "name": "番組情報"
+      },
+      "subtitle": {
+        "name": "字幕"
+      },
+      "tool": {
+        "name": "ツール"
       }
     },
     "number": {

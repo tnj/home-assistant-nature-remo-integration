@@ -1,4 +1,4 @@
-"""Button platform for IR signals and extra light buttons."""
+"""Button platform for IR signals, extra light buttons, and TV buttons."""
 
 from __future__ import annotations
 
@@ -35,12 +35,72 @@ KNOWN_LIGHT_BUTTON_KEYS = {
 # TV buttons exposed as stateless shortcuts (broadcast band + input-cycle).
 # Nature's tv.state.input is the cloud-side virtual remote's band mode, not
 # TV state (it changes even while the TV is powered off), so no entity
-# claims a current input here — these just press the button.
+# claims a current input here — these just press the button. These are the
+# only TV buttons enabled by default; every other button in
+# KNOWN_TV_BUTTON_KEYS (and any unrecognized name) is created disabled.
+SHORTCUT_TV_BUTTON_NAMES = frozenset(
+    {"input-terrestrial", "input-bs", "input-cs", "select-input-src"}
+)
+
+# Translation keys for every button name the Nature API is known to enumerate
+# in tv.buttons[]. Names outside this vocabulary still get an entity (see
+# NatureRemoTVButton), falling back to their API-provided label.
 KNOWN_TV_BUTTON_KEYS = {
     "input-terrestrial": "input_terrestrial",
     "input-bs": "input_bs",
     "input-cs": "input_cs",
     "select-input-src": "select_input_src",
+    "power": "power",
+    "mute": "mute",
+    "vol-up": "vol_up",
+    "vol-down": "vol_down",
+    "ch-up": "ch_up",
+    "ch-down": "ch_down",
+    "ch-1": "ch_1",
+    "ch-2": "ch_2",
+    "ch-3": "ch_3",
+    "ch-4": "ch_4",
+    "ch-5": "ch_5",
+    "ch-6": "ch_6",
+    "ch-7": "ch_7",
+    "ch-8": "ch_8",
+    "ch-9": "ch_9",
+    "ch-10": "ch_10",
+    "ch-11": "ch_11",
+    "ch-12": "ch_12",
+    "up": "up",
+    "down": "down",
+    "left": "left",
+    "right": "right",
+    "ok": "ok",
+    "back": "back",
+    "exit": "exit",
+    "home": "home",
+    "settings": "settings",
+    "submenu": "submenu",
+    "display": "display",
+    "d": "d",
+    "tv-schedule": "tv_schedule",
+    "select-audio": "select_audio",
+    "blue": "blue",
+    "red": "red",
+    "green": "green",
+    "yellow": "yellow",
+    "play": "play",
+    "pause": "pause",
+    "stop": "stop",
+    "prev": "prev",
+    "next": "next",
+    "fast-rewind": "fast_rewind",
+    "fast-forward": "fast_forward",
+    "record": "record",
+    "rewind-10-sec": "rewind_10_sec",
+    "forward-30-sec": "forward_30_sec",
+    "clear-sound": "clear_sound",
+    "rec-list": "rec_list",
+    "program-info": "program_info",
+    "subtitle": "subtitle",
+    "tool": "tool",
 }
 
 
@@ -78,17 +138,14 @@ async def async_setup_entry(
                     )
             if appliance.type == APPLIANCE_TYPE_TV and appliance.tv is not None:
                 for button in appliance.tv.buttons:
-                    translation_key = KNOWN_TV_BUTTON_KEYS.get(button.name)
-                    if translation_key is None:
+                    if not button.name:
                         continue
                     unique_id = f"{appliance_id}_button_{button.name}"
                     if unique_id in known:
                         continue
                     known.add(unique_id)
                     new_entities.append(
-                        NatureRemoTVButton(
-                            coordinator, appliance_id, button.name, translation_key
-                        )
+                        NatureRemoTVButton(coordinator, appliance_id, button)
                     )
         if new_entities:
             async_add_entities(new_entities)
@@ -158,20 +215,32 @@ class NatureRemoLightButton(NatureRemoApplianceEntity, ButtonEntity):
 
 
 class NatureRemoTVButton(NatureRemoApplianceEntity, ButtonEntity):
-    """Presses one TV shortcut button (broadcast band or input cycle)."""
+    """Presses one API-enumerated TV button (tv.buttons[]).
+
+    Every button the Nature API lists for the appliance gets an entity so
+    none of the remote's preset functions are hidden behind the catch-all
+    `remote` entity. Only the four broadcast/input shortcuts are enabled by
+    default; the rest are created disabled (entity-disabled-by-default) so
+    the entity list isn't flooded but the button is still one click away.
+    """
 
     def __init__(
         self,
         coordinator: NatureRemoCoordinator,
         appliance_id: str,
-        button_name: str,
-        translation_key: str,
+        button: ApplianceButton,
     ) -> None:
-        """Initialize with the translation key for this known button."""
+        """Initialize with a translation for known button names."""
         super().__init__(coordinator, appliance_id)
-        self._button_name = button_name
-        self._attr_unique_id = f"{appliance_id}_button_{button_name}"
-        self._attr_translation_key = translation_key
+        self._button_name = button.name
+        self._attr_unique_id = f"{appliance_id}_button_{button.name}"
+        self._attr_entity_registry_enabled_default = (
+            button.name in SHORTCUT_TV_BUTTON_NAMES
+        )
+        if (translation_key := KNOWN_TV_BUTTON_KEYS.get(button.name)) is not None:
+            self._attr_translation_key = translation_key
+        else:
+            self._attr_name = button.label or button.name
 
     async def async_press(self) -> None:
         """Send the TV button. Stateless: no tv state to update."""

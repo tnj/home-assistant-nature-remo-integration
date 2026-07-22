@@ -135,17 +135,57 @@ async def test_tv_shortcut_buttons(
     mock_client.send_tv_button.assert_called_once_with("appliance-tv-1", "input-bs")
 
 
-async def test_tv_button_unmapped_name_not_created(
+async def test_tv_vocabulary_button_disabled_by_default(
     hass: HomeAssistant, init_integration: MockConfigEntry
 ) -> None:
-    """A TV button not in the known shortcut set gets no button entity."""
+    """A vocabulary-mapped bulk TV button registers but stays disabled by default."""
     entity_registry = er.async_get(hass)
-    assert (
-        entity_registry.async_get_entity_id(
-            BUTTON_DOMAIN, DOMAIN, "appliance-tv-1_button_vol-up"
-        )
-        is None
+    entity_id = entity_registry.async_get_entity_id(
+        BUTTON_DOMAIN, DOMAIN, "appliance-tv-1_button_vol-up"
     )
+    assert entity_id is not None
+    entry = entity_registry.async_get(entity_id)
+    assert entry is not None
+    assert entry.disabled_by == er.RegistryEntryDisabler.INTEGRATION
+    assert entry.translation_key == "vol_up"
+    # Disabled entities have no state.
+    assert hass.states.get(entity_id) is None
+
+
+async def test_tv_button_fallback_label_disabled_by_default(
+    hass: HomeAssistant, init_integration: MockConfigEntry
+) -> None:
+    """A TV button outside the vocabulary falls back to its label, disabled."""
+    entity_registry = er.async_get(hass)
+    entity_id = entity_registry.async_get_entity_id(
+        BUTTON_DOMAIN, DOMAIN, "appliance-tv-1_button_input"
+    )
+    assert entity_id is not None
+    entry = entity_registry.async_get(entity_id)
+    assert entry is not None
+    assert entry.disabled_by == er.RegistryEntryDisabler.INTEGRATION
+    assert entry.translation_key is None
+    assert entry.original_name == "TV_input"
+
+
+async def test_tv_button_empty_name_not_created(
+    hass: HomeAssistant, init_integration: MockConfigEntry, appliances: list[Appliance]
+) -> None:
+    """No entity is created for an empty/duplicate button name."""
+    entity_registry = er.async_get(hass)
+    tv_appliance = next(a for a in appliances if a.id == "appliance-tv-1")
+    assert tv_appliance.tv is not None
+    expected_names = {b.name for b in tv_appliance.tv.buttons if b.name}
+    assert "" in {b.name for b in tv_appliance.tv.buttons}  # fixture sanity check
+
+    tv_entity_ids = [
+        entity_id
+        for entity_id in entity_registry.entities
+        if entity_id.startswith(f"{BUTTON_DOMAIN}.")
+        and (entry := entity_registry.async_get(entity_id)) is not None
+        and entry.unique_id.startswith("appliance-tv-1_button_")
+    ]
+    assert len(tv_entity_ids) == len(expected_names)
 
 
 async def test_light_button_unknown_name_uses_label(
