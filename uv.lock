@@ -9,12 +9,6 @@ resolution-markers = [
     "python_full_version < '3.13.2'",
 ]
 
-[manifest]
-members = [
-    "aionatureremo",
-    "nature-remo-ha-workspace",
-]
-
 [[package]]
 name = "acme"
 version = "3.2.0"
@@ -502,15 +496,12 @@ wheels = [
 [[package]]
 name = "aionatureremo"
 version = "0.1.0"
-source = { editable = "lib/aionatureremo" }
+source = { git = "https://github.com/tnj/aionatureremo#25a09596af61ed334b09ea112259e08c869a6e15" }
 dependencies = [
     { name = "aiohttp", version = "3.11.16", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13.2'" },
     { name = "aiohttp", version = "3.13.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13.2' and python_full_version < '3.14.2'" },
     { name = "aiohttp", version = "3.14.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14.2'" },
 ]
-
-[package.metadata]
-requires-dist = [{ name = "aiohttp", specifier = ">=3.10.0" }]
 
 [[package]]
 name = "aiooui"
@@ -3055,7 +3046,7 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "aionatureremo", editable = "lib/aionatureremo" },
+    { name = "aionatureremo", git = "https://github.com/tnj/aionatureremo" },
     { name = "aioresponses", specifier = ">=0.7.6" },
     { name = "homeassistant" },
     { name = "mypy", specifier = ">=1.14.0" },

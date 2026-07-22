@@ -55,11 +55,7 @@
 ## 3. リポジトリ構成（uv ワークスペース・モノレポ）
 
 ```
-├── pyproject.toml                  # workspace ルート（dev 依存: HA, pytest, ruff, mypy 等）
-├── lib/aionatureremo/              # async API クライアント（PyPI 公開前提・MIT）
-│   ├── pyproject.toml              # hatchling、py.typed、requires-python >=3.12
-│   ├── src/aionatureremo/
-│   └── tests/                      # aioresponses による単体テスト
+├── pyproject.toml                  # dev 依存: HA, pytest, ruff, mypy 等（aionatureremo は git/PyPI 参照）
 ├── custom_components/nature_remo/  # HA 統合本体（コア PR 時にコピー移植）
 │   ├── __init__.py  config_flow.py  coordinator.py  entity.py  const.py
 │   ├── climate.py  sensor.py  light.py  remote.py  button.py  number.py
@@ -101,7 +97,7 @@
 
 - `type NatureRemoConfigEntry = ConfigEntry[NatureRemoCoordinator]`、データは `entry.runtime_data`（Bronze `runtime-data`）。
 - `async_setup_entry`: クライアント生成（共有セッション注入）→ coordinator `async_config_entry_first_refresh()`（`test-before-setup`）→ 各プラットフォームへ forward → 動的デバイス/stale 掃除のリスナー登録。
-- `manifest.json`: `iot_class: cloud_polling`、`integration_type: hub`、`config_flow: true`、`requirements: ["aionatureremo==0.1.0"]`（実バージョンを記載。PyPI 公開前の開発中は、HA 環境へ `pip install -e lib/aionatureremo` しておけば要件充足済みと判定されインストールは走らない。この手順を README に記載）、`codeowners`、`loggers: ["aionatureremo"]`。
+- `manifest.json`: `iot_class: cloud_polling`、`integration_type: hub`、`config_flow: true`、`requirements: ["aionatureremo==0.1.0"]`（実バージョンを記載。PyPI 公開前の開発中は、HA 環境へ `pip install git+https://github.com/tnj/aionatureremo` しておけば要件充足済みと判定されインストールは走らない。この手順を README に記載）、`codeowners`、`loggers: ["aionatureremo"]`。
 
 ### 5.2 Config flow
 
@@ -185,7 +181,7 @@
 
 ## 7. テスト戦略
 
-- **ライブラリ** (`lib/aionatureremo/tests/`): aioresponses。認証ヘッダー、全エンドポイント、401/429/5xx→例外、レート制限ヘッダー追跡、EPC 換算表（コード 0〜4, 10〜13）、aircon 送信ペイロードの組み立て。
+- **ライブラリ** (2026-07-22 に https://github.com/tnj/aionatureremo へ分離、履歴保存): aioresponses。認証ヘッダー、全エンドポイント、401/429/5xx→例外、レート制限ヘッダー追跡、EPC 換算表（コード 0〜4, 10〜13）、aircon 送信ペイロードの組み立て。
 - **統合** (`tests/`): pytest-homeassistant-custom-component。実 API 形状の JSON フィクスチャ（Remo 3 / mini / E + AC / TV / LIGHT / IR / スマートメーターを含む代表構成）。
   - config flow: 正常系 CREATE_ENTRY、invalid_auth / cannot_connect / unknown → 回復して成功、重複 abort、reauth 成功 / wrong_account、reconfigure。**100% カバレッジ必須**。
   - init: セットアップ成功、初回失敗 → ConfigEntryNotReady、認証失敗 → reauth flow 起動、unload。

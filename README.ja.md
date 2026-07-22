@@ -21,7 +21,7 @@
 ## インストール(手動・プレリリース)
 
 1. クライアントライブラリを Home Assistant の Python 環境にインストールします:
-   `pip install aionatureremo`(PyPI リリース前は `pip install -e lib/aionatureremo`)。
+   `pip install aionatureremo`(PyPI リリース前は `pip install git+https://github.com/tnj/aionatureremo`)。
 2. `custom_components/nature_remo/` を `<config>/custom_components/` にコピーします。
 3. Home Assistant を再起動します。
 

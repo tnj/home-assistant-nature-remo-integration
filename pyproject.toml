@@ -19,13 +19,11 @@ dev = [
 ]
 
 [tool.uv.sources]
-aionatureremo = { workspace = true }
-
-[tool.uv.workspace]
-members = ["lib/aionatureremo"]
+# Until aionatureremo is published to PyPI, resolve it from its repository.
+aionatureremo = { git = "https://github.com/tnj/aionatureremo" }
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "lib/aionatureremo/tests"]
+testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "--import-mode=importlib"
 pythonpath = ["."]
@@ -40,7 +38,7 @@ select = ["B", "E", "F", "I", "RUF", "SIM", "UP", "W"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
-files = ["lib/aionatureremo/src", "custom_components/nature_remo"]
+files = ["custom_components/nature_remo"]
 
 [[tool.mypy.overrides]]
 module = ["tests.*"]
