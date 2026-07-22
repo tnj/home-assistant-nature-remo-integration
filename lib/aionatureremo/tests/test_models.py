@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from aionatureremo import (
     TV,
     Aircon,
+    AirconModeRange,
     AirconSettings,
     Appliance,
     Device,
@@ -90,6 +91,18 @@ def test_aircon_from_dict() -> None:
     assert aircon.modes["dry"].temperatures == []
     assert aircon.fixed_buttons == ["power-off"]
     assert aircon.temp_unit == "c"
+
+
+def test_aircon_mode_range_drops_empty_string_entries() -> None:
+    """The real API sends dirh: [""] as a "not supported" placeholder.
+
+    Keeping the empty string would make directions_h non-empty and falsely
+    enable horizontal swing; it must parse to an empty list instead.
+    """
+    mode_range = AirconModeRange.from_dict({"dirh": [""], "temp": ["1", ""]})
+
+    assert mode_range.directions_h == []
+    assert mode_range.temperatures == ["1"]
 
 
 def test_aircon_settings_from_dict() -> None:

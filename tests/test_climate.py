@@ -351,6 +351,31 @@ def test_climate_fahrenheit_current_temperature_converted(
     assert round(entity.current_temperature, 1) == 79.5
 
 
+def test_climate_relative_temp_lists_without_plus_prefix_are_excluded(
+    appliances: list[Appliance], devices: list[Device]
+) -> None:
+    """Real ACs send relative lists with no '+' prefix (e.g. ["-5",...,"5"]).
+
+    min/max must still come only from the absolute cool/warm lists, not from
+    auto's signed offsets or dry's zero-anchored offsets.
+    """
+    ac = next(a for a in appliances if a.id == "appliance-ac-1")
+    assert ac.aircon is not None
+    modes = dict(ac.aircon.modes)
+    modes["auto"] = replace(
+        modes["auto"],
+        temperatures=["-5", "-4", "-3", "-2", "-1", "0", "1", "2", "3", "4", "5"],
+    )
+    modes["dry"] = replace(modes["dry"], temperatures=["-2", "-1", "0", "1", "2"])
+    entity = _ac_entity(
+        appliances, devices, replace(ac, aircon=replace(ac.aircon, modes=modes))
+    )
+
+    # warm 18-22 union cool 24-28; auto and dry are relative and excluded.
+    assert entity.min_temp == 18.0
+    assert entity.max_temp == 28.0
+
+
 def test_climate_without_aircon_uses_default_limits(
     appliances: list[Appliance], devices: list[Device]
 ) -> None:

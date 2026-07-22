@@ -37,15 +37,15 @@
             "temp": ["18", "19", "20", "21", "22"],
             "vol": ["1", "2", "3", "auto"],
             "dir": ["1", "2", "swing", "auto"],
-            "dirh": []
+            "dirh": [""]
           },
-          "dry": { "temp": [], "vol": ["auto"], "dir": [], "dirh": [] },
-          "blow": { "temp": [], "vol": ["1", "2", "auto"], "dir": [], "dirh": [] },
+          "dry": { "temp": ["-2", "-1", "0", "1", "2"], "vol": ["auto"], "dir": [], "dirh": [""] },
+          "blow": { "temp": [], "vol": ["1", "2", "auto"], "dir": [], "dirh": [""] },
           "auto": {
-            "temp": ["-2", "-1", "0", "+1", "+2"],
+            "temp": ["-5", "-4", "-3", "-2", "-1", "0", "1", "2", "3", "4", "5"],
             "vol": ["auto"],
             "dir": [],
-            "dirh": []
+            "dirh": [""]
           }
         },
         "fixedButtons": ["power-off"]
@@ -73,10 +73,10 @@
       "state": { "input": "t" },
       "buttons": [
         { "name": "power", "image": "ico_io", "label": "TV_power" },
-        { "name": "input", "image": "ico_input", "label": "TV_input" },
-        { "name": "t", "image": "ico_t", "label": "TV_t" },
-        { "name": "bs", "image": "ico_bs", "label": "TV_bs" },
-        { "name": "cs", "image": "ico_cs", "label": "TV_cs" },
+        { "name": "input-terrestrial", "image": "ico_input_t", "label": "Terrestrial" },
+        { "name": "input-bs", "image": "ico_input_bs", "label": "BS" },
+        { "name": "input-cs", "image": "ico_input_cs", "label": "CS" },
+        { "name": "select-input-src", "image": "ico_input", "label": "Source" },
         { "name": "vol-up", "image": "ico_vol_up", "label": "TV_vol_up" },
         { "name": "vol-down", "image": "ico_vol_down", "label": "TV_vol_down" },
         { "name": "mute", "image": "ico_mute", "label": "TV_mute" },

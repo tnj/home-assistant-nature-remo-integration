@@ -53,6 +53,17 @@ def _parse_float(value: str) -> float | None:
         return None
 
 
+def _is_relative_temperature_list(values: list[str]) -> bool:
+    """True when a mode's temp list holds relative offsets, not setpoints."""
+    for value in values:
+        if value.startswith(("+", "-")):
+            return True
+        parsed = _parse_float(value)
+        if parsed is not None and parsed <= 0:
+            return True
+    return False
+
+
 def _coerce_to_allowed(current: str, allowed: list[str]) -> str:
     """Keep current if allowed; else snap to the numerically closest value."""
     if current in allowed:
@@ -177,15 +188,19 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
 
         HA validates set_temperature against min/max BEFORE the entity can
         switch modes, so the advertised range must span every mode (per-mode
-        enforcement happens at send time via _coerce_to_allowed). Lists with
-        '+'-prefixed entries are relative offsets (auto mode) and excluded.
+        enforcement happens at send time via _coerce_to_allowed). Relative
+        offset lists (auto mode, and on some models dry mode too) are
+        excluded; real devices send these without a '+' prefix (e.g.
+        ["-5",...,"5"]), so a list is treated as relative when any entry
+        starts with '+'/'-' or parses to <= 0 -- no real AC setpoint is at
+        or below zero in either Celsius or Fahrenheit.
         """
         aircon = self.appliance.aircon
         if aircon is None:
             return []
         values: set[float] = set()
         for mode_range in aircon.modes.values():
-            if any(value.startswith("+") for value in mode_range.temperatures):
+            if _is_relative_temperature_list(mode_range.temperatures):
                 continue
             for value in mode_range.temperatures:
                 if (parsed := _parse_float(value)) is not None:

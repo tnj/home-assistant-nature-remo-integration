@@ -122,10 +122,15 @@ class ApplianceModel:
 
 
 def _str_list(value: Any) -> list[str]:
-    """Coerce an optional list of values into a list of strings."""
+    """Coerce an optional list of values into a list of non-empty strings.
+
+    The API sends unsupported ranges (e.g. dirh on ACs without horizontal
+    swing) as a single-item placeholder like [""] rather than omitting the
+    key, so blank entries must be dropped to represent "not supported".
+    """
     if not isinstance(value, list):
         return []
-    return [str(item) for item in value]
+    return [str(item) for item in value if str(item)]
 
 
 @dataclass(frozen=True, slots=True)

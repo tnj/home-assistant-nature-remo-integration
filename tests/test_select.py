@@ -41,7 +41,7 @@ async def test_select_option_sends_button(
         {ATTR_ENTITY_ID: ENTITY, ATTR_OPTION: "bs"},
         blocking=True,
     )
-    mock_client.send_tv_button.assert_called_once_with("appliance-tv-1", "bs")
+    mock_client.send_tv_button.assert_called_once_with("appliance-tv-1", "input-bs")
     state = hass.states.get(ENTITY)
     assert state is not None
     assert state.state == "bs"
@@ -68,14 +68,14 @@ async def test_no_select_without_input_buttons(
     mock_config_entry: MockConfigEntry,
     mock_client: AsyncMock,
 ) -> None:
-    """A TV without t/bs/cs buttons gets no input select."""
+    """A TV without input-* buttons gets no input select."""
     payloads = load_json_fixture("appliances.json")
     for payload in payloads:
         if payload["id"] == "appliance-tv-1":
             payload["tv"]["buttons"] = [
                 button
                 for button in payload["tv"]["buttons"]
-                if button["name"] not in ("t", "bs", "cs")
+                if not button["name"].startswith("input-")
             ]
     mock_client.get_appliances.return_value = [
         Appliance.from_dict(item) for item in payloads

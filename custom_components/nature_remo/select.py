@@ -15,8 +15,15 @@ from .entity import NatureRemoApplianceEntity, command_error_message
 
 PARALLEL_UPDATES = 1
 
-# TV input buttons whose names match the state.input values.
-INPUT_BUTTONS = ("t", "bs", "cs")
+# For each state.input code, the candidate button names that switch to it,
+# real-world long name first and short legacy name as fallback. Real Remo
+# accounts expose the long names (e.g. "input-terrestrial"); some older or
+# simulated payloads only have the short codes.
+INPUT_SOURCES: dict[str, tuple[str, ...]] = {
+    "t": ("input-terrestrial", "t"),
+    "bs": ("input-bs", "bs"),
+    "cs": ("input-cs", "cs"),
+}
 
 
 async def async_setup_entry(
@@ -39,12 +46,16 @@ async def async_setup_entry(
             ):
                 continue
             button_names = {button.name for button in appliance.tv.buttons}
-            options = [name for name in INPUT_BUTTONS if name in button_names]
-            if len(options) < 2:
+            button_map: dict[str, str] = {}
+            for code, candidates in INPUT_SOURCES.items():
+                button = next((c for c in candidates if c in button_names), None)
+                if button is not None:
+                    button_map[code] = button
+            if len(button_map) < 2:
                 continue
             known.add(appliance_id)
             new_entities.append(
-                NatureRemoTVInputSelect(coordinator, appliance_id, options)
+                NatureRemoTVInputSelect(coordinator, appliance_id, button_map)
             )
         if new_entities:
             async_add_entities(new_entities)
@@ -62,12 +73,13 @@ class NatureRemoTVInputSelect(NatureRemoApplianceEntity, SelectEntity):
         self,
         coordinator: NatureRemoCoordinator,
         appliance_id: str,
-        options: list[str],
+        button_map: dict[str, str],
     ) -> None:
-        """Initialize with the inputs this TV exposes."""
+        """Initialize with the input codes this TV resolves to real buttons."""
         super().__init__(coordinator, appliance_id)
         self._attr_unique_id = f"{appliance_id}_input"
-        self._attr_options = options
+        self._button_map = button_map
+        self._attr_options = [code for code in INPUT_SOURCES if code in button_map]
 
     @property
     def current_option(self) -> str | None:
@@ -77,11 +89,12 @@ class NatureRemoTVInputSelect(NatureRemoApplianceEntity, SelectEntity):
         return current if current in self.options else None
 
     async def async_select_option(self, option: str) -> None:
-        """Switch input by pressing the matching TV button."""
+        """Switch input by pressing the button resolved for this code."""
         appliance = self.appliance
+        button = self._button_map[option]
         try:
             new_state = await self.coordinator.client.send_tv_button(
-                appliance.id, option
+                appliance.id, button
             )
         except NatureRemoError as err:
             raise HomeAssistantError(
