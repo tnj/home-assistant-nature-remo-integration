@@ -17,6 +17,7 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 STEP_TOKEN_DATA_SCHEMA = vol.Schema({vol.Required(CONF_API_TOKEN): str})
+TOKEN_URL_PLACEHOLDERS = {"token_url": "https://home.nature.global/"}
 
 
 class NatureRemoConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -54,7 +55,10 @@ class NatureRemoConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(title=user.nickname, data=user_input)
         return self.async_show_form(
-            step_id="user", data_schema=STEP_TOKEN_DATA_SCHEMA, errors=errors
+            step_id="user",
+            data_schema=STEP_TOKEN_DATA_SCHEMA,
+            errors=errors,
+            description_placeholders=TOKEN_URL_PLACEHOLDERS,
         )
 
     async def async_step_reauth(
@@ -80,6 +84,7 @@ class NatureRemoConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="reauth_confirm",
             data_schema=STEP_TOKEN_DATA_SCHEMA,
             errors=errors,
+            description_placeholders=TOKEN_URL_PLACEHOLDERS,
         )
 
     async def async_step_reconfigure(

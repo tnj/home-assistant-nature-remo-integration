@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "description": "Enter a personal access token issued at [home.nature.global](https://home.nature.global/).",
+        "description": "Enter a personal access token issued at {token_url}.",
         "data": {
           "api_token": "Access token"
         },
@@ -11,7 +11,7 @@
         }
       },
       "reauth_confirm": {
-        "description": "The access token is no longer valid. Issue a new token at [home.nature.global](https://home.nature.global/) and enter it here.",
+        "description": "The access token is no longer valid. Issue a new token at {token_url} and enter it here.",
         "data": {
           "api_token": "Access token"
         },
@@ -43,27 +43,61 @@
   },
   "entity": {
     "sensor": {
-      "illuminance": { "name": "Illuminance" },
-      "last_motion": { "name": "Last motion" },
-      "cumulative_energy_normal": { "name": "Purchased energy" },
-      "cumulative_energy_reverse": { "name": "Sold energy" }
+      "illuminance": {
+        "name": "Illuminance"
+      },
+      "last_motion": {
+        "name": "Last motion"
+      },
+      "cumulative_energy_normal": {
+        "name": "Purchased energy"
+      },
+      "cumulative_energy_reverse": {
+        "name": "Sold energy"
+      }
     },
     "button": {
-      "night": { "name": "Night light" },
-      "on_100": { "name": "Full brightness" },
-      "on_favorite": { "name": "Favorite" },
-      "bright_up": { "name": "Brightness up" },
-      "bright_down": { "name": "Brightness down" },
-      "colortemp_up": { "name": "Color temperature up" },
-      "colortemp_down": { "name": "Color temperature down" },
-      "input_terrestrial": { "name": "Terrestrial" },
-      "input_bs": { "name": "BS" },
-      "input_cs": { "name": "CS" },
-      "select_input_src": { "name": "Input" }
+      "night": {
+        "name": "Night light"
+      },
+      "on_100": {
+        "name": "Full brightness"
+      },
+      "on_favorite": {
+        "name": "Favorite"
+      },
+      "bright_up": {
+        "name": "Brightness up"
+      },
+      "bright_down": {
+        "name": "Brightness down"
+      },
+      "colortemp_up": {
+        "name": "Color temperature up"
+      },
+      "colortemp_down": {
+        "name": "Color temperature down"
+      },
+      "input_terrestrial": {
+        "name": "Terrestrial"
+      },
+      "input_bs": {
+        "name": "BS"
+      },
+      "input_cs": {
+        "name": "CS"
+      },
+      "select_input_src": {
+        "name": "Input"
+      }
     },
     "number": {
-      "temperature_offset": { "name": "Temperature offset" },
-      "humidity_offset": { "name": "Humidity offset" }
+      "temperature_offset": {
+        "name": "Temperature offset"
+      },
+      "humidity_offset": {
+        "name": "Humidity offset"
+      }
     }
   }
 }
