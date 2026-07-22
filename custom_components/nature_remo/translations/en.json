@@ -48,16 +48,6 @@
       "cumulative_energy_normal": { "name": "Purchased energy" },
       "cumulative_energy_reverse": { "name": "Sold energy" }
     },
-    "select": {
-      "tv_input": {
-        "name": "Input",
-        "state": {
-          "t": "Terrestrial",
-          "bs": "BS",
-          "cs": "CS"
-        }
-      }
-    },
     "button": {
       "night": { "name": "Night light" },
       "on_100": { "name": "Full brightness" },
@@ -65,7 +55,11 @@
       "bright_up": { "name": "Brightness up" },
       "bright_down": { "name": "Brightness down" },
       "colortemp_up": { "name": "Color temperature up" },
-      "colortemp_down": { "name": "Color temperature down" }
+      "colortemp_down": { "name": "Color temperature down" },
+      "input_terrestrial": { "name": "Terrestrial" },
+      "input_bs": { "name": "BS" },
+      "input_cs": { "name": "CS" },
+      "select_input_src": { "name": "Input" }
     },
     "number": {
       "temperature_offset": { "name": "Temperature offset" },

@@ -106,6 +106,48 @@ async def test_light_button_failure_raises(
         )
 
 
+async def test_tv_shortcut_buttons(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
+) -> None:
+    """The four known TV buttons become entities; pressing sends the name."""
+    entity_registry = er.async_get(hass)
+
+    for name in (
+        "input-terrestrial",
+        "input-bs",
+        "input-cs",
+        "select-input-src",
+    ):
+        assert (
+            entity_registry.async_get_entity_id(
+                BUTTON_DOMAIN, DOMAIN, f"appliance-tv-1_button_{name}"
+            )
+            is not None
+        )
+
+    bs_entity = entity_registry.async_get_entity_id(
+        BUTTON_DOMAIN, DOMAIN, "appliance-tv-1_button_input-bs"
+    )
+    assert bs_entity is not None
+    await hass.services.async_call(
+        BUTTON_DOMAIN, SERVICE_PRESS, {ATTR_ENTITY_ID: bs_entity}, blocking=True
+    )
+    mock_client.send_tv_button.assert_called_once_with("appliance-tv-1", "input-bs")
+
+
+async def test_tv_button_unmapped_name_not_created(
+    hass: HomeAssistant, init_integration: MockConfigEntry
+) -> None:
+    """A TV button not in the known shortcut set gets no button entity."""
+    entity_registry = er.async_get(hass)
+    assert (
+        entity_registry.async_get_entity_id(
+            BUTTON_DOMAIN, DOMAIN, "appliance-tv-1_button_vol-up"
+        )
+        is None
+    )
+
+
 async def test_light_button_unknown_name_uses_label(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,

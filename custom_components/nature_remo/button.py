@@ -6,6 +6,7 @@ from dataclasses import replace
 
 from aionatureremo import (
     APPLIANCE_TYPE_LIGHT,
+    APPLIANCE_TYPE_TV,
     ApplianceButton,
     NatureRemoError,
     Signal,
@@ -31,6 +32,17 @@ KNOWN_LIGHT_BUTTON_KEYS = {
     "colortemp-down": "colortemp_down",
 }
 
+# TV buttons exposed as stateless shortcuts (broadcast band + input-cycle).
+# Nature's tv.state.input is the cloud-side virtual remote's band mode, not
+# TV state (it changes even while the TV is powered off), so no entity
+# claims a current input here — these just press the button.
+KNOWN_TV_BUTTON_KEYS = {
+    "input-terrestrial": "input_terrestrial",
+    "input-bs": "input_bs",
+    "input-cs": "input_cs",
+    "select-input-src": "select_input_src",
+}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -53,18 +65,31 @@ async def async_setup_entry(
                 new_entities.append(
                     NatureRemoSignalButton(coordinator, appliance_id, signal)
                 )
-            if appliance.type != APPLIANCE_TYPE_LIGHT or appliance.light is None:
-                continue
-            for button in appliance.light.buttons:
-                if button.name in LIGHT_POWER_BUTTONS:
-                    continue
-                unique_id = f"{appliance_id}_button_{button.name}"
-                if unique_id in known:
-                    continue
-                known.add(unique_id)
-                new_entities.append(
-                    NatureRemoLightButton(coordinator, appliance_id, button)
-                )
+            if appliance.type == APPLIANCE_TYPE_LIGHT and appliance.light is not None:
+                for button in appliance.light.buttons:
+                    if button.name in LIGHT_POWER_BUTTONS:
+                        continue
+                    unique_id = f"{appliance_id}_button_{button.name}"
+                    if unique_id in known:
+                        continue
+                    known.add(unique_id)
+                    new_entities.append(
+                        NatureRemoLightButton(coordinator, appliance_id, button)
+                    )
+            if appliance.type == APPLIANCE_TYPE_TV and appliance.tv is not None:
+                for button in appliance.tv.buttons:
+                    translation_key = KNOWN_TV_BUTTON_KEYS.get(button.name)
+                    if translation_key is None:
+                        continue
+                    unique_id = f"{appliance_id}_button_{button.name}"
+                    if unique_id in known:
+                        continue
+                    known.add(unique_id)
+                    new_entities.append(
+                        NatureRemoTVButton(
+                            coordinator, appliance_id, button.name, translation_key
+                        )
+                    )
         if new_entities:
             async_add_entities(new_entities)
 
@@ -130,3 +155,32 @@ class NatureRemoLightButton(NatureRemoApplianceEntity, ButtonEntity):
             self.coordinator.async_update_appliance(
                 replace(appliance, light=replace(appliance.light, state=new_state))
             )
+
+
+class NatureRemoTVButton(NatureRemoApplianceEntity, ButtonEntity):
+    """Presses one TV shortcut button (broadcast band or input cycle)."""
+
+    def __init__(
+        self,
+        coordinator: NatureRemoCoordinator,
+        appliance_id: str,
+        button_name: str,
+        translation_key: str,
+    ) -> None:
+        """Initialize with the translation key for this known button."""
+        super().__init__(coordinator, appliance_id)
+        self._button_name = button_name
+        self._attr_unique_id = f"{appliance_id}_button_{button_name}"
+        self._attr_translation_key = translation_key
+
+    async def async_press(self) -> None:
+        """Send the TV button. Stateless: no tv state to update."""
+        appliance = self.appliance
+        try:
+            await self.coordinator.client.send_tv_button(
+                appliance.id, self._button_name
+            )
+        except NatureRemoError as err:
+            raise HomeAssistantError(
+                command_error_message(f"Failed to control {appliance.nickname}", err)
+            ) from err

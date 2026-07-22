@@ -48,16 +48,6 @@
       "cumulative_energy_normal": { "name": "買電量" },
       "cumulative_energy_reverse": { "name": "売電量" }
     },
-    "select": {
-      "tv_input": {
-        "name": "入力切替",
-        "state": {
-          "t": "地上波",
-          "bs": "BS",
-          "cs": "CS"
-        }
-      }
-    },
     "button": {
       "night": { "name": "常夜灯" },
       "on_100": { "name": "全灯" },
@@ -65,7 +55,11 @@
       "bright_up": { "name": "明るく" },
       "bright_down": { "name": "暗く" },
       "colortemp_up": { "name": "色温度を上げる" },
-      "colortemp_down": { "name": "色温度を下げる" }
+      "colortemp_down": { "name": "色温度を下げる" },
+      "input_terrestrial": { "name": "地デジ" },
+      "input_bs": { "name": "BS" },
+      "input_cs": { "name": "CS" },
+      "select_input_src": { "name": "入力切替" }
     },
     "number": {
       "temperature_offset": { "name": "温度補正" },

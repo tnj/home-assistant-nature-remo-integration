@@ -10,7 +10,7 @@ custom component; see [docs/CORE_SUBMISSION.md](docs/CORE_SUBMISSION.md)).
 | Nature Remo | Home Assistant |
 | --- | --- |
 | Air conditioner | `climate` — modes, target temperature, fan, vertical & horizontal swing |
-| TV | `remote` (every IR button via `remote.send_command`) + input `select` |
+| TV | `remote` (every IR button via `remote.send_command`) + broadcast/input shortcut buttons |
 | Light | `light` (on/off) + `button` for night / full / brightness buttons |
 | Custom IR appliance | one `button` per learned signal |
 | Built-in sensors | `sensor` — temperature, humidity, brightness, last motion |
