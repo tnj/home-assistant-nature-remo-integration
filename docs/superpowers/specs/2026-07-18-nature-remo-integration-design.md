@@ -152,6 +152,7 @@
 - `temperature_unit`: `settings.temp_unit == "f"` → °F、それ以外 °C。
 - コマンド: **常に現在設定全体 + 変更点を送信**。`set_hvac_mode(OFF)` → `button="power-off"`、他モード → `operation_mode` 変更 + `button=""`（ON 復帰）。`set_temperature` は許容リストへスナップ、`ATTR_HVAC_MODE` 同時指定に対応。応答で楽観的更新。
 - auto モードの相対温度（"+2" 等）は float パースで受容し、README に既知の制約として記載。
+- **extra（リモコン側ステート、2026-07-23 追加）**: `settings.extra`（例: ダイキン `autoclean`）は物理リモコンが毎フレームに焼き込む状態。climate は全送信で現在値を `extra.$id=$value` として渡し（落とすと状態が消える）、状態属性にも表示。`range.extras` のカタログ（choice型・availability=available・選択肢 on/off）に該当する項目は **switch エンティティ**（CONFIG カテゴリ、`{appliance_id}_extra_{id}`）として操作可能にする。書き込みは「現在の button + 新 extra」の部分送信で電源状態を保存。なお富士通の airdir-swing/tilt は実機検証で「API 上どこにも状態が残らないワンショット」と確認済みのため button のまま（§6.2 固定ボタン）。
 
 ### 6.3 TV → button（remote は不採用）
 

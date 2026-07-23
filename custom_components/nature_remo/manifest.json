@@ -9,5 +9,5 @@
   "issue_tracker": "https://github.com/tnj/home-assistant-nature-remo-integration/issues",
   "loggers": ["aionatureremo"],
   "requirements": ["aionatureremo==0.2.0"],
-  "version": "0.2.1"
+  "version": "0.3.0"
 }

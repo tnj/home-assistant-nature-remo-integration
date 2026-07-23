@@ -104,6 +104,11 @@
       "airdir_tilt": {
         "default": "mdi:angle-acute"
       }
+    },
+    "switch": {
+      "autoclean": {
+        "default": "mdi:air-filter"
+      }
     }
   }
 }

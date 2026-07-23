@@ -257,6 +257,11 @@
       "humidity_offset": {
         "name": "湿度補正"
       }
+    },
+    "switch": {
+      "autoclean": {
+        "name": "内部クリーン"
+      }
     }
   }
 }

@@ -257,6 +257,11 @@
       "humidity_offset": {
         "name": "Humidity offset"
       }
+    },
+    "switch": {
+      "autoclean": {
+        "name": "Mold proof"
+      }
     }
   }
 }
