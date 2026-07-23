@@ -17,12 +17,26 @@ custom component; see [docs/CORE_SUBMISSION.md](docs/CORE_SUBMISSION.md)).
 | Sensor calibration | `number` — temperature / humidity offsets |
 | Remo E / E lite smart meter | `sensor` — instantaneous power, purchased & sold energy (Energy dashboard ready) |
 
-## Installation (manual, pre-release)
+## Installation
 
-1. Install the client library into your Home Assistant Python environment:
-   `pip install aionatureremo`.
-2. Copy `custom_components/nature_remo/` into `<config>/custom_components/`.
-3. Restart Home Assistant.
+### HACS (recommended)
+
+Until this integration is listed in the HACS default store, add it as a
+custom repository:
+
+1. HACS → three-dot menu → **Custom repositories**.
+2. Repository: `https://github.com/tnj/home-assistant-nature-remo-integration`,
+   type: **Integration** → Add.
+3. Install **Nature Remo** from the HACS list and restart Home Assistant.
+
+Updates arrive through HACS as new releases are tagged. The
+[aionatureremo](https://pypi.org/project/aionatureremo/) client library is
+installed automatically from the manifest.
+
+### Manual
+
+1. Copy `custom_components/nature_remo/` into `<config>/custom_components/`.
+2. Restart Home Assistant (`aionatureremo` is installed automatically).
 
 ## Configuration
 
@@ -40,6 +54,10 @@ custom component; see [docs/CORE_SUBMISSION.md](docs/CORE_SUBMISSION.md)).
   shown as numbers as-is.
 - State changes made with the appliance's own physical remote are invisible
   to Nature and therefore to this integration.
+- The 30 req / 5 min budget is **per Nature account**: running this
+  integration alongside another Nature Remo integration (or heavy app use)
+  on the same account causes intermittent rate-limit unavailability. Use
+  one integration per account.
 
 ## Development
 

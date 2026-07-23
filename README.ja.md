@@ -18,12 +18,24 @@
 | センサーの校正 | `number` — 温度・湿度のオフセット |
 | Remo E / E lite スマートメーター | `sensor` — 瞬時電力、買電量・売電量(エネルギーダッシュボード対応) |
 
-## インストール(手動・プレリリース)
+## インストール
 
-1. クライアントライブラリを Home Assistant の Python 環境にインストールします:
-   `pip install aionatureremo`。
-2. `custom_components/nature_remo/` を `<config>/custom_components/` にコピーします。
-3. Home Assistant を再起動します。
+### HACS(推奨)
+
+HACS のデフォルトストアに掲載されるまでは、カスタムリポジトリとして追加します:
+
+1. HACS → 右上メニュー → **カスタムリポジトリ**
+2. リポジトリ: `https://github.com/tnj/home-assistant-nature-remo-integration`、
+   タイプ: **Integration** で追加
+3. 一覧から **Nature Remo** をインストールし、Home Assistant を再起動
+
+以後の更新はリリースのたびに HACS 経由で届きます。クライアントライブラリ
+[aionatureremo](https://pypi.org/project/aionatureremo/) は manifest 経由で自動インストールされます。
+
+### 手動
+
+1. `custom_components/nature_remo/` を `<config>/custom_components/` にコピーします。
+2. Home Assistant を再起動します(`aionatureremo` は自動インストールされます)。
 
 ## 設定
 
@@ -40,6 +52,9 @@
 - 一部のエアコンはオートモードで相対温度(`-2`〜`+2`)を返しますが、そのまま数値として表示します。
 - 家電本体の物理リモコンによる状態変更は Nature 側からも本インテグレーションからも
   検知できません。
+- 5 分あたり 30 リクエストの上限は **Nature アカウント単位**です。同じアカウントで
+  他の Nature Remo 連携を併用すると枠を取り合い、断続的に unavailable になります。
+  アカウントごとに連携は 1 つに絞ってください。
 
 ## 開発
 
