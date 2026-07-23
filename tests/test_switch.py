@@ -87,3 +87,39 @@ async def test_no_switch_for_unavailable_extra(
     await hass.async_block_till_done()
 
     assert hass.states.get(ENTITY) is None
+
+
+async def test_extra_switch_preserves_power_off(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """Toggling an extra on an OFF AC resends power-off, never powering it on."""
+    mock_client.get_appliances.return_value = [
+        replace(appliance, settings=replace(appliance.settings, button="power-off"))
+        if appliance.id == "appliance-ac-1"
+        else appliance
+        for appliance in appliances
+    ]
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    mock_client.set_aircon_settings.return_value = AirconSettings(
+        temperature="26",
+        temperature_unit="c",
+        mode="cool",
+        volume="auto",
+        direction="swing",
+        direction_h="",
+        button="power-off",
+        updated_at=None,
+        extra={"autoclean": "off"},
+    )
+    await hass.services.async_call(
+        SWITCH_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: ENTITY}, blocking=True
+    )
+    mock_client.set_aircon_settings.assert_called_once_with(
+        "appliance-ac-1", button="power-off", extra={"autoclean": "off"}
+    )
