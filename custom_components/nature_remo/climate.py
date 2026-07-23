@@ -300,6 +300,14 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
             return None
         return list(mode_range.directions_h)
 
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Expose remote-side extra parameters (e.g. autoclean)."""
+        settings = self.appliance.settings
+        if settings is None or not settings.extra:
+            return None
+        return dict(settings.extra)
+
     async def _async_send(
         self,
         *,
@@ -346,9 +354,15 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
                         else current_dirh,
                         mode_range.directions_h,
                     )
+        # settings.extra is remote-side state (e.g. Daikin autoclean) that the
+        # physical remote bakes into every transmitted frame — pass it back on
+        # every send or the state would be silently dropped.
+        extra = (
+            dict(settings.extra) if settings is not None and settings.extra else None
+        )
         try:
             new_settings = await self.coordinator.client.set_aircon_settings(
-                appliance.id, **payload
+                appliance.id, extra=extra, **payload
             )
         except NatureRemoError as err:
             raise HomeAssistantError(

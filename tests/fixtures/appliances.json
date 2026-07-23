@@ -25,7 +25,10 @@
       "dir": "swing",
       "dirh": "",
       "button": "",
-      "updated_at": "2026-07-18T06:00:00Z"
+      "updated_at": "2026-07-18T06:00:00Z",
+      "extra": {
+        "autoclean": "on"
+      }
     },
     "aircon": {
       "range": {
@@ -136,6 +139,26 @@
           "airdir-swing",
           "airdir-tilt",
           "power-off"
+        ],
+        "extras": [
+          {
+            "id": "autoclean",
+            "text": "Mold Proof",
+            "description": "Dries the inside after cool/dry operation.",
+            "type": "choice",
+            "options": [
+              {
+                "value": "off",
+                "text": "Off",
+                "default": true
+              },
+              {
+                "value": "on",
+                "text": "On"
+              }
+            ],
+            "availability": "available"
+          }
         ]
       },
       "tempUnit": "c"

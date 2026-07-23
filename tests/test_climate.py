@@ -67,7 +67,7 @@ def _ac_entity(
 
 def _settings(**overrides: str | None) -> AirconSettings:
     """Build an AirconSettings for mock command responses."""
-    values: dict[str, str | None] = {
+    values: dict[str, str | None | dict[str, str]] = {
         "temperature": "26",
         "temperature_unit": "c",
         "mode": "cool",
@@ -76,6 +76,8 @@ def _settings(**overrides: str | None) -> AirconSettings:
         "direction_h": "",
         "button": "",
         "updated_at": None,
+        # The real API echoes remote-side extra state in every response.
+        "extra": {"autoclean": "on"},
     }
     values.update(overrides)
     return AirconSettings(**values)  # type: ignore[arg-type]
@@ -419,3 +421,48 @@ async def test_climate_unsupported_values_raise(
         await entity.async_set_swing_mode("bogus")
     with pytest.raises(ServiceValidationError):
         await entity.async_set_swing_horizontal_mode("bogus")
+
+
+async def test_climate_preserves_extra_state(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
+) -> None:
+    """Remote-side extra state (autoclean) is exposed and sent on every command."""
+    state = hass.states.get(ENTITY)
+    assert state is not None
+    assert state.attributes["autoclean"] == "on"
+
+    mock_client.set_aircon_settings.return_value = _settings(button="power-off")
+    await hass.services.async_call(
+        CLIMATE_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: ENTITY}, blocking=True
+    )
+    assert mock_client.set_aircon_settings.call_args.kwargs["extra"] == {
+        "autoclean": "on"
+    }
+
+
+async def test_climate_without_extra_sends_none(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """An AC without extra state sends no extra fields."""
+    mock_client.get_appliances.return_value = [
+        replace(appliance, settings=replace(appliance.settings, extra={}))
+        if appliance.id == "appliance-ac-1"
+        else appliance
+        for appliance in appliances
+    ]
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = hass.states.get(ENTITY)
+    assert state is not None
+    assert "autoclean" not in state.attributes
+
+    mock_client.set_aircon_settings.return_value = _settings(extra={})
+    await hass.services.async_call(
+        CLIMATE_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: ENTITY}, blocking=True
+    )
+    assert mock_client.set_aircon_settings.call_args.kwargs["extra"] is None
