@@ -1,41 +1,109 @@
 {
   "entity": {
     "sensor": {
-      "illuminance": { "default": "mdi:brightness-6" },
-      "last_motion": { "default": "mdi:motion-sensor" }
+      "illuminance": {
+        "default": "mdi:brightness-6"
+      },
+      "last_motion": {
+        "default": "mdi:motion-sensor"
+      }
     },
     "number": {
-      "temperature_offset": { "default": "mdi:thermometer-plus" },
-      "humidity_offset": { "default": "mdi:water-plus" }
+      "temperature_offset": {
+        "default": "mdi:thermometer-plus"
+      },
+      "humidity_offset": {
+        "default": "mdi:water-plus"
+      }
     },
     "button": {
-      "night": { "default": "mdi:weather-night" },
-      "on_100": { "default": "mdi:brightness-7" },
-      "on_favorite": { "default": "mdi:star" },
-      "bright_up": { "default": "mdi:brightness-6" },
-      "bright_down": { "default": "mdi:brightness-4" },
-      "colortemp_up": { "default": "mdi:thermometer-chevron-up" },
-      "colortemp_down": { "default": "mdi:thermometer-chevron-down" },
-      "input_terrestrial": { "default": "mdi:radio-tower" },
-      "input_bs": { "default": "mdi:satellite-variant" },
-      "input_cs": { "default": "mdi:satellite-variant" },
-      "select_input_src": { "default": "mdi:video-input-hdmi" },
-      "power": { "default": "mdi:power" },
-      "mute": { "default": "mdi:volume-mute" },
-      "vol_up": { "default": "mdi:volume-plus" },
-      "vol_down": { "default": "mdi:volume-minus" },
-      "ch_up": { "default": "mdi:arrow-up-bold" },
-      "ch_down": { "default": "mdi:arrow-down-bold" },
-      "tv_schedule": { "default": "mdi:calendar-month" },
-      "play": { "default": "mdi:play" },
-      "pause": { "default": "mdi:pause" },
-      "stop": { "default": "mdi:stop" },
-      "record": { "default": "mdi:record-rec" },
-      "back": { "default": "mdi:arrow-left" },
-      "ok": { "default": "mdi:check-circle-outline" },
-      "home": { "default": "mdi:home" },
-      "settings": { "default": "mdi:cog" },
-      "subtitle": { "default": "mdi:subtitles" }
+      "night": {
+        "default": "mdi:weather-night"
+      },
+      "on_100": {
+        "default": "mdi:brightness-7"
+      },
+      "on_favorite": {
+        "default": "mdi:star"
+      },
+      "bright_up": {
+        "default": "mdi:brightness-6"
+      },
+      "bright_down": {
+        "default": "mdi:brightness-4"
+      },
+      "colortemp_up": {
+        "default": "mdi:thermometer-chevron-up"
+      },
+      "colortemp_down": {
+        "default": "mdi:thermometer-chevron-down"
+      },
+      "input_terrestrial": {
+        "default": "mdi:radio-tower"
+      },
+      "input_bs": {
+        "default": "mdi:satellite-variant"
+      },
+      "input_cs": {
+        "default": "mdi:satellite-variant"
+      },
+      "select_input_src": {
+        "default": "mdi:video-input-hdmi"
+      },
+      "power": {
+        "default": "mdi:power"
+      },
+      "mute": {
+        "default": "mdi:volume-mute"
+      },
+      "vol_up": {
+        "default": "mdi:volume-plus"
+      },
+      "vol_down": {
+        "default": "mdi:volume-minus"
+      },
+      "ch_up": {
+        "default": "mdi:arrow-up-bold"
+      },
+      "ch_down": {
+        "default": "mdi:arrow-down-bold"
+      },
+      "tv_schedule": {
+        "default": "mdi:calendar-month"
+      },
+      "play": {
+        "default": "mdi:play"
+      },
+      "pause": {
+        "default": "mdi:pause"
+      },
+      "stop": {
+        "default": "mdi:stop"
+      },
+      "record": {
+        "default": "mdi:record-rec"
+      },
+      "back": {
+        "default": "mdi:arrow-left"
+      },
+      "ok": {
+        "default": "mdi:check-circle-outline"
+      },
+      "home": {
+        "default": "mdi:home"
+      },
+      "settings": {
+        "default": "mdi:cog"
+      },
+      "subtitle": {
+        "default": "mdi:subtitles"
+      },
+      "airdir_swing": {
+        "default": "mdi:swap-vertical"
+      },
+      "airdir_tilt": {
+        "default": "mdi:angle-acute"
+      }
     }
   }
 }

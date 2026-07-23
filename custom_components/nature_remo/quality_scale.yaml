@@ -56,7 +56,7 @@ rules:
   entity-device-class: done
   entity-disabled-by-default:
     status: done
-    comment: Bulk TV buttons are disabled by default; only broadcast/input shortcuts are enabled.
+    comment: Bulk TV buttons are disabled by default; only the everyday shortcuts (power, input, channel, volume) are enabled.
   entity-translations: done
   exception-translations: todo
   icon-translations: done

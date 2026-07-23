@@ -109,30 +109,33 @@ async def test_light_button_failure_raises(
 async def test_tv_shortcut_buttons(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
 ) -> None:
-    """The four known TV buttons become entities; pressing sends the name."""
+    """The everyday TV shortcuts are enabled by default; pressing sends the name."""
     entity_registry = er.async_get(hass)
 
     for name in (
-        "input-terrestrial",
-        "input-bs",
-        "input-cs",
+        "power",
         "select-input-src",
+        "ch-up",
+        "ch-down",
+        "vol-up",
+        "vol-down",
     ):
-        assert (
-            entity_registry.async_get_entity_id(
-                BUTTON_DOMAIN, DOMAIN, f"appliance-tv-1_button_{name}"
-            )
-            is not None
+        entity_id = entity_registry.async_get_entity_id(
+            BUTTON_DOMAIN, DOMAIN, f"appliance-tv-1_button_{name}"
         )
+        assert entity_id is not None
+        entry = entity_registry.async_get(entity_id)
+        assert entry is not None
+        assert entry.disabled_by is None
 
-    bs_entity = entity_registry.async_get_entity_id(
-        BUTTON_DOMAIN, DOMAIN, "appliance-tv-1_button_input-bs"
+    vol_up_entity = entity_registry.async_get_entity_id(
+        BUTTON_DOMAIN, DOMAIN, "appliance-tv-1_button_vol-up"
     )
-    assert bs_entity is not None
+    assert vol_up_entity is not None
     await hass.services.async_call(
-        BUTTON_DOMAIN, SERVICE_PRESS, {ATTR_ENTITY_ID: bs_entity}, blocking=True
+        BUTTON_DOMAIN, SERVICE_PRESS, {ATTR_ENTITY_ID: vol_up_entity}, blocking=True
     )
-    mock_client.send_tv_button.assert_called_once_with("appliance-tv-1", "input-bs")
+    mock_client.send_tv_button.assert_called_once_with("appliance-tv-1", "vol-up")
 
 
 async def test_tv_vocabulary_button_disabled_by_default(
@@ -141,13 +144,13 @@ async def test_tv_vocabulary_button_disabled_by_default(
     """A vocabulary-mapped bulk TV button registers but stays disabled by default."""
     entity_registry = er.async_get(hass)
     entity_id = entity_registry.async_get_entity_id(
-        BUTTON_DOMAIN, DOMAIN, "appliance-tv-1_button_vol-up"
+        BUTTON_DOMAIN, DOMAIN, "appliance-tv-1_button_mute"
     )
     assert entity_id is not None
     entry = entity_registry.async_get(entity_id)
     assert entry is not None
     assert entry.disabled_by == er.RegistryEntryDisabler.INTEGRATION
-    assert entry.translation_key == "vol_up"
+    assert entry.translation_key == "mute"
     # Disabled entities have no state.
     assert hass.states.get(entity_id) is None
 
@@ -224,3 +227,38 @@ async def test_light_button_unknown_name_uses_label(
     state = hass.states.get(entity_id)
     assert state is not None
     assert state.attributes["friendly_name"] == "Bedroom Light Sleep timer"
+
+
+async def test_ac_fixed_buttons(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
+) -> None:
+    """AC fixed buttons (except power-off) become enabled button entities."""
+    entity_registry = er.async_get(hass)
+
+    for name in ("airdir-swing", "airdir-tilt"):
+        entity_id = entity_registry.async_get_entity_id(
+            BUTTON_DOMAIN, DOMAIN, f"appliance-ac-1_button_{name}"
+        )
+        assert entity_id is not None
+        entry = entity_registry.async_get(entity_id)
+        assert entry is not None
+        assert entry.disabled_by is None
+
+    # power-off stays exclusive to the climate entity.
+    assert (
+        entity_registry.async_get_entity_id(
+            BUTTON_DOMAIN, DOMAIN, "appliance-ac-1_button_power-off"
+        )
+        is None
+    )
+
+    swing_entity = entity_registry.async_get_entity_id(
+        BUTTON_DOMAIN, DOMAIN, "appliance-ac-1_button_airdir-swing"
+    )
+    assert swing_entity is not None
+    await hass.services.async_call(
+        BUTTON_DOMAIN, SERVICE_PRESS, {ATTR_ENTITY_ID: swing_entity}, blocking=True
+    )
+    mock_client.set_aircon_settings.assert_called_once_with(
+        "appliance-ac-1", button="airdir-swing"
+    )

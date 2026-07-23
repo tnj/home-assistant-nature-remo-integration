@@ -17,7 +17,7 @@
 |---|---|
 | リポジトリ構成 | `custom_components/` 型モノレポ（開発・実機検証しやすく、コア PR 時にコピー移植） |
 | API クライアント | 新規 async ライブラリ `aionatureremo` をリポジトリ内で開発、将来 PyPI 公開 |
-| TV の表現 | `remote` エンティティ + 放送/入力切替ボタン（`state.input` は TV 電源 OFF 中も変化するクラウド側帯域モードと判明したため select は不採用） |
+| TV の表現 | **ステートレスな button 群のみ**（API が列挙する全ボタン。select は state.input がクラウド側モードのため不採用、remote はトグル電源と語彙の完全重複のため不採用 — §6.3） |
 | 人感センサー | **timestamp センサー**（最終検知時刻）。ポーリングでリアルタイム性がないため binary_sensor 化はしない |
 | アプローチ | 全部入り + 単一コーディネーター（案1） |
 
@@ -58,7 +58,7 @@
 ├── pyproject.toml                  # dev 依存: HA, pytest, ruff, mypy 等（aionatureremo は git/PyPI 参照）
 ├── custom_components/nature_remo/  # HA 統合本体（コア PR 時にコピー移植）
 │   ├── __init__.py  config_flow.py  coordinator.py  entity.py  const.py
-│   ├── climate.py  sensor.py  light.py  remote.py  button.py  number.py
+│   ├── climate.py  sensor.py  light.py  button.py  number.py
 │   ├── diagnostics.py  manifest.json  strings.json  icons.json  quality_scale.yaml
 │   └── translations/en.json, ja.json
 ├── tests/                          # 統合テスト (pytest-homeassistant-custom-component)
@@ -123,7 +123,7 @@
 ### 5.5 エラー処理・並列制御
 
 - コマンド失敗（サービス呼び出し中の API エラー）は `HomeAssistantError` に変換して raise（メッセージにレート制限の reset を含める。将来 `exception-translations` 対応）。無効なコマンド名・選択肢は `ServiceValidationError`。
-- `PARALLEL_UPDATES`: 読み取り専用プラットフォーム（sensor）= 0、操作系（climate / light / remote / button / number）= 1（コマンド直列化でレート制限とIR干渉を緩和）。
+- `PARALLEL_UPDATES`: 読み取り専用プラットフォーム（sensor）= 0、操作系（climate / light / button / number）= 1（コマンド直列化でレート制限とIR干渉を緩和）。
 - ログ: 429 発生時は warning（reset 時刻付き）。unavailable 遷移は coordinator 標準機構に委譲。
 
 ## 6. エンティティ仕様
@@ -153,13 +153,11 @@
 - コマンド: **常に現在設定全体 + 変更点を送信**。`set_hvac_mode(OFF)` → `button="power-off"`、他モード → `operation_mode` 変更 + `button=""`（ON 復帰）。`set_temperature` は許容リストへスナップ、`ATTR_HVAC_MODE` 同時指定に対応。応答で楽観的更新。
 - auto モードの相対温度（"+2" 等）は float パースで受容し、README に既知の制約として記載。
 
-### 6.3 TV → remote + button
+### 6.3 TV → button（remote は不採用）
 
-- remote: `unique_id = {appliance_id}`、`assumed_state = True`、`is_on = None`。
-  - `send_command(command, num_repeats, delay_secs)`: 各コマンド名を `tv.buttons[].name` と照合（不明は `ServiceValidationError`）→ `POST /tv`。repeats/delay を尊重。
-  - `turn_on / turn_off`: `power` ボタン送信（トグル前提）。`power` ボタンが無い機種では `ServiceValidationError`（remote の turn_on/off はベース機能のため無効化不可）。
+- **remote エンティティは置かない**（2026-07-23 決定）: remote は `turn_on/turn_off/toggle` サービスと UI トグルが無条件に付随するが、Nature の TV には離散的な ON/OFF 信号が存在しない（`power` はトグルのみ）ため、どう実装しても嘘か常時エラーになる。また `tv.buttons[]` の全列挙をエンティティ化した時点で `send_command` の語彙は button 群と完全に重複する。Broadlink 型の remote 慣例は「ボタンを列挙できない API」の産物であり、完全列挙できる本統合には当てはまらない。IR 家電（シグナル）と同じく「ステートレスなボタン群」で統一する。電源は `power` ボタン（トグルであることが名前から明白）を既定有効のショートカットとして提供。
 - 放送/入力切替ボタン: `tv.state.input` はクラウド側バーチャルリモコンの帯域モードであり TV 本体の状態ではないと実機検証で判明した（**TV の電源が OFF の間も値が変化する**）。one-way IR ブリッジで「現在の入力」を名乗る select エンティティは不誠実なため、current state を持たない button に置き換え: `tv.buttons` に存在すれば `input-terrestrial`（地デジ）/ `input-bs`（BS）/ `input-cs`（CS）/ `select-input-src`（入力切替、TV 本体の入力切替ボタン）を button として生成。押下は `send_tv_button` を呼ぶのみで、状態の楽観的更新は行わない（ステートレス）。
-- 全ボタンの button 化: Nature API は `tv.buttons[]` で家電ごとのプリセットボタンを一意に列挙する（`name`/`label`/`image`）。この列挙可能性を活かし、`name` が空でなく同一家電内で重複しないすべてのボタンを button エンティティ化する（`unique_id = {appliance_id}_button_{name}`。`name` が空または重複するものはスキップ）。上記の放送/入力切替ショートカット4種のみ既定で有効とし、それ以外の全ボタンは `entity_registry_enabled_default = False` で生成する（`entity-disabled-by-default` ルール準拠。エンティティ一覧には登録されるが既定では無効、ワンクリックで有効化可能）。命名は電源/消音/音量/チャンネル/カーソル/決定/色/再生系など既知の語彙（約40語）を翻訳キー化し、語彙にない名前は LIGHT の追加ボタンと同じフォールバックで API 提供の `label`(なければ `name`)をそのまま名前にする。
+- 全ボタンの button 化: Nature API は `tv.buttons[]` で家電ごとのプリセットボタンを一意に列挙する（`name`/`label`/`image`）。この列挙可能性を活かし、`name` が空でなく同一家電内で重複しないすべてのボタンを button エンティティ化する（`unique_id = {appliance_id}_button_{name}`。`name` が空または重複するものはスキップ）。日常操作のショートカット6種（`power` / `select-input-src` / `ch-up` / `ch-down` / `vol-up` / `vol-down` = 電源・入力切替・チャンネル±・音量±）のみ既定で有効とし、それ以外の全ボタンは `entity_registry_enabled_default = False` で生成する（`entity-disabled-by-default` ルール準拠。エンティティ一覧には登録されるが既定では無効、ワンクリックで有効化可能）。命名は電源/消音/音量/チャンネル/カーソル/決定/色/再生系など既知の語彙（約40語）を翻訳キー化し、語彙にない名前は LIGHT の追加ボタンと同じフォールバックで API 提供の `label`(なければ `name`)をそのまま名前にする。
 
 ### 6.4 LIGHT → light + button
 
@@ -186,7 +184,7 @@
 - **統合** (`tests/`): pytest-homeassistant-custom-component。実 API 形状の JSON フィクスチャ（Remo 3 / mini / E + AC / TV / LIGHT / IR / スマートメーターを含む代表構成）。
   - config flow: 正常系 CREATE_ENTRY、invalid_auth / cannot_connect / unknown → 回復して成功、重複 abort、reauth 成功 / wrong_account、reconfigure。**100% カバレッジ必須**。
   - init: セットアップ成功、初回失敗 → ConfigEntryNotReady、認証失敗 → reauth flow 起動、unload。
-  - 各プラットフォーム: syrupy スナップショット + コマンド系（climate の全 set 系・ON/OFF、remote の send_command / 無効名、light、button、number）、楽観的更新の検証、429 時の HomeAssistantError、動的追加・stale 削除、mo タイムスタンプ。
+  - 各プラットフォーム: syrupy スナップショット + コマンド系（climate の全 set 系・ON/OFF、light、button、number）、楽観的更新の検証、429 時の HomeAssistantError、動的追加・stale 削除、mo タイムスタンプ。
 - **CI** (GitHub Actions): ruff check + format --check、mypy（lib は strict）、pytest（lib / 統合）、home-assistant/actions hassfest 検証。
 
 ## 8. コア提出戦略（詳細は docs/CORE_SUBMISSION.md に整備）
@@ -194,7 +192,7 @@
 1. `aionatureremo` を PyPI へ公開（タグ→自動リリース）
 2. home-assistant/brands へ icon/logo PR（icon.png 256/512）
 3. コア PR #1: config flow + **sensor** のみ（Bronze 達成、quality_scale.yaml 同梱）— コアの「単一プラットフォームから」方針に適合
-4. 後続 PR: climate → light / remote / button / number → diagnostics・reauth 等
+4. 後続 PR: climate → light / button / number → diagnostics・reauth 等
 5. 各 PR に並行して home-assistant.io へドキュメント PR
 - custom→core 差分: manifest から `version` 削除・`quality_scale: bronze` 追加、テストの import 調整のみに収まる構造を維持する。
 

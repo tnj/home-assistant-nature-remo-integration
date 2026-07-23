@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from aionatureremo import (
+    APPLIANCE_TYPE_AC,
     APPLIANCE_TYPE_LIGHT,
     APPLIANCE_TYPE_TV,
     ApplianceButton,
@@ -32,14 +33,13 @@ KNOWN_LIGHT_BUTTON_KEYS = {
     "colortemp-down": "colortemp_down",
 }
 
-# TV buttons exposed as stateless shortcuts (broadcast band + input-cycle).
-# Nature's tv.state.input is the cloud-side virtual remote's band mode, not
-# TV state (it changes even while the TV is powered off), so no entity
-# claims a current input here — these just press the button. These are the
-# only TV buttons enabled by default; every other button in
+# The everyday controls: power, input cycle, channel up/down, volume up/down.
+# These are the only TV buttons enabled by default; every other button in
 # KNOWN_TV_BUTTON_KEYS (and any unrecognized name) is created disabled.
+# "power" is a toggle-only IR signal and this button is its primary control
+# surface (there is no remote entity; the TV has no discrete on/off codes).
 SHORTCUT_TV_BUTTON_NAMES = frozenset(
-    {"input-terrestrial", "input-bs", "input-cs", "select-input-src"}
+    {"power", "select-input-src", "ch-up", "ch-down", "vol-up", "vol-down"}
 )
 
 # Translation keys for every button name the Nature API is known to enumerate
@@ -147,6 +147,18 @@ async def async_setup_entry(
                     new_entities.append(
                         NatureRemoTVButton(coordinator, appliance_id, button)
                     )
+            if appliance.type == APPLIANCE_TYPE_AC and appliance.aircon is not None:
+                for name in appliance.aircon.fixed_buttons:
+                    # power-off is the climate entity's HVACMode.OFF.
+                    if not name or name == "power-off":
+                        continue
+                    unique_id = f"{appliance_id}_button_{name}"
+                    if unique_id in known:
+                        continue
+                    known.add(unique_id)
+                    new_entities.append(
+                        NatureRemoACFixedButton(coordinator, appliance_id, name)
+                    )
         if new_entities:
             async_add_entities(new_entities)
 
@@ -217,11 +229,12 @@ class NatureRemoLightButton(NatureRemoApplianceEntity, ButtonEntity):
 class NatureRemoTVButton(NatureRemoApplianceEntity, ButtonEntity):
     """Presses one API-enumerated TV button (tv.buttons[]).
 
-    Every button the Nature API lists for the appliance gets an entity so
-    none of the remote's preset functions are hidden behind the catch-all
-    `remote` entity. Only the four broadcast/input shortcuts are enabled by
-    default; the rest are created disabled (entity-disabled-by-default) so
-    the entity list isn't flooded but the button is still one click away.
+    Every button the Nature API lists for the appliance gets an entity;
+    these buttons ARE the TV's control surface (there is no remote entity).
+    Only the everyday shortcuts (power / input / channel / volume) are
+    enabled by default; the rest are created disabled
+    (entity-disabled-by-default) so the entity list isn't flooded but every
+    button is still one click away.
     """
 
     def __init__(
@@ -248,6 +261,49 @@ class NatureRemoTVButton(NatureRemoApplianceEntity, ButtonEntity):
         try:
             await self.coordinator.client.send_tv_button(
                 appliance.id, self._button_name
+            )
+        except NatureRemoError as err:
+            raise HomeAssistantError(
+                command_error_message(f"Failed to control {appliance.nickname}", err)
+            ) from err
+
+
+KNOWN_AC_FIXED_BUTTON_KEYS = {
+    "airdir-swing": "airdir_swing",
+    "airdir-tilt": "airdir_tilt",
+}
+
+
+class NatureRemoACFixedButton(NatureRemoApplianceEntity, ButtonEntity):
+    """Presses one AC fixed button (aircon.range.fixedButtons).
+
+    Fixed buttons are one-shot IR commands outside the mode/temperature
+    state machine — on some models (e.g. Fujitsu) they are the only way to
+    control airflow swing. power-off is excluded here: that is the climate
+    entity's HVACMode.OFF. Stateless press; the next poll refreshes state.
+    """
+
+    def __init__(
+        self,
+        coordinator: NatureRemoCoordinator,
+        appliance_id: str,
+        name: str,
+    ) -> None:
+        """Initialize with a translation for known fixed-button names."""
+        super().__init__(coordinator, appliance_id)
+        self._button_name = name
+        self._attr_unique_id = f"{appliance_id}_button_{name}"
+        if (translation_key := KNOWN_AC_FIXED_BUTTON_KEYS.get(name)) is not None:
+            self._attr_translation_key = translation_key
+        else:
+            self._attr_name = name
+
+    async def async_press(self) -> None:
+        """Send the fixed button (button param only, no settings change)."""
+        appliance = self.appliance
+        try:
+            await self.coordinator.client.set_aircon_settings(
+                appliance.id, button=self._button_name
             )
         except NatureRemoError as err:
             raise HomeAssistantError(

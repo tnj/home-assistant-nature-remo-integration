@@ -31,7 +31,7 @@ Steps to move this integration from `custom_components/` into
 
 ## 4. Follow-up PRs
 
-climate → light/remote/button/number → diagnostics & dynamic/stale
+climate → light/button/number → diagnostics & dynamic/stale
 devices. One platform (or one coherent feature) per PR.
 
 ## 5. Documentation PRs
@@ -43,7 +43,7 @@ The `docs-*` quality-scale rules map to sections of that page.
 ## Design rationale notes
 
 Why the TV platform creates a `button` entity for every preset button the
-Nature API enumerates, not just the four broadcast/input shortcuts:
+Nature API enumerates, not just the everyday shortcuts:
 
 - The Nature Cloud API uniquely enumerates every preset button per TV
   appliance (`tv.buttons[]`: `name` / `label` / `image`), and this list is
@@ -53,18 +53,25 @@ Nature API enumerates, not just the four broadcast/input shortcuts:
   entities rather than requiring users to invoke them through a generic
   "activate scene" service call.
 - Other IR-bridge integrations in core do not do this because they cannot:
-  Broadcast's `remote` support has no per-device catalog of named buttons to
+  Broadlink's `remote` support has no per-device catalog of named buttons to
   enumerate, and SwitchBot's cloud API cannot even list a hub's learned
   custom IR buttons (see
   [OpenWonderLabs/SwitchBotAPI#251](https://github.com/OpenWonderLabs/SwitchBotAPI/issues/251)).
   Nature Remo's API is the outlier in offering a structured, per-appliance
   button catalog, which is what makes per-item entities viable here.
-- Bulk buttons (everything except the four broadcast/input shortcuts) ship
+- Bulk buttons (everything except the power/input/channel/volume shortcuts) ship
   with `entity_registry_enabled_default = False`, per the
   `entity-disabled-by-default` quality-scale rule — they are present in the
   entity registry and one click away, but do not flood a fresh install's
   entity list.
-- The `remote` entity remains the primary control surface: `send_command`
-  reaches every button (including ones with an empty API-provided name,
-  which get no button entity), so nothing is lost by leaving most buttons
-  disabled by default.
+- There is deliberately **no `remote` entity**. The `remote` platform
+  unconditionally registers `turn_on`/`turn_off`/`toggle` services and a UI
+  toggle, but Nature TVs expose only a toggle-type `power` IR signal — no
+  discrete on/off codes — so any implementation of those services would
+  either lie about state or permanently error. With the full button catalog
+  entity-ized, `send_command`'s vocabulary would be an exact duplicate of
+  the button entities. The Broadlink-style remote convention exists because
+  those APIs cannot enumerate buttons; this one can, so buttons are the
+  whole surface (matching how learned IR signals are exposed). Power is the
+  `power` button entity, enabled by default — its toggle nature is explicit
+  in its name. Command sequences are ordinary scripts pressing buttons.

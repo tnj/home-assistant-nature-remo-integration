@@ -242,6 +242,12 @@
       },
       "tool": {
         "name": "ツール"
+      },
+      "airdir_swing": {
+        "name": "風向スイング"
+      },
+      "airdir_tilt": {
+        "name": "風向切替"
       }
     },
     "number": {

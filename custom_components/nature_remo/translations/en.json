@@ -242,6 +242,12 @@
       },
       "tool": {
         "name": "Tools"
+      },
+      "airdir_swing": {
+        "name": "Swing airflow"
+      },
+      "airdir_tilt": {
+        "name": "Tilt airflow"
       }
     },
     "number": {

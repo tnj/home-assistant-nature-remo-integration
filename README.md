@@ -10,7 +10,7 @@ custom component; see [docs/CORE_SUBMISSION.md](docs/CORE_SUBMISSION.md)).
 | Nature Remo | Home Assistant |
 | --- | --- |
 | Air conditioner | `climate` — modes, target temperature, fan, vertical & horizontal swing |
-| TV | `remote` (every IR button via `remote.send_command`) + all API-enumerated buttons as button entities (broadcast/input shortcuts enabled; the rest disabled by default) |
+| TV | every API-enumerated button as a `button` entity (power / input / channel / volume shortcuts enabled by default; the rest one click away). Power is a toggle signal — the TV has no discrete on/off codes |
 | Light | `light` (on/off) + `button` for night / full / brightness buttons |
 | Custom IR appliance | one `button` per learned signal |
 | Built-in sensors | `sensor` — temperature, humidity, brightness, last motion |
