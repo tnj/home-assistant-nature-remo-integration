@@ -1,0 +1,22 @@
+name: Feature request
+description: Suggest an improvement or new capability
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: |
+        Design rule of this project: entities exist only where the Nature API
+        provides state; one-way IR signals stay stateless buttons.
+  - type: textarea
+    id: api
+    attributes:
+      label: Relevant Nature API data (if known)
+      description: e.g. the relevant fields from /1/appliances for your device

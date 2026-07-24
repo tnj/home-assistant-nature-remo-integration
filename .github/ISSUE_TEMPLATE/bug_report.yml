@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a problem with the Nature Remo integration
+labels: ["bug"]
+body:
+  - type: input
+    id: ha-version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.2.0"
+    validations:
+      required: true
+  - type: input
+    id: integration-version
+    attributes:
+      label: Integration version
+      placeholder: "0.2.2"
+    validations:
+      required: true
+  - type: input
+    id: remo-model
+    attributes:
+      label: Remo device model and firmware
+      description: Shown on the device page under Settings → Devices & services → Nature Remo
+      placeholder: "Remo 3, Remo/1.14.8"
+  - type: input
+    id: appliance
+    attributes:
+      label: Appliance involved (if any)
+      placeholder: "AC (Daikin), TV, light, smart meter, …"
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: |
+        Enable debug logging for `custom_components.nature_remo` and
+        `aionatureremo`, reproduce, and paste the output. Remove your access
+        token if it appears anywhere.
+      render: text
