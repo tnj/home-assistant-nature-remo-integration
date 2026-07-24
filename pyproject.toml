@@ -2,7 +2,7 @@
 name = "nature-remo-ha-workspace"
 version = "0.0.0"
 description = "Development workspace for the Nature Remo Home Assistant integration"
-requires-python = ">=3.13"
+requires-python = ">=3.13.2"
 dependencies = []
 
 [tool.uv]
@@ -11,8 +11,15 @@ package = false
 [dependency-groups]
 dev = [
     "aionatureremo",
-    "homeassistant",
+    # Test against at least the minimum HA declared in hacs.json. Without a
+    # floor, dependency resolution (e.g. Dependabot security bumps) can
+    # silently downgrade HA to ancient releases whose pins don't conflict.
+    "homeassistant>=2026.2",
     "pytest-homeassistant-custom-component",
+    # aioresponses 0.7.x is incompatible with aiohttp 3.14's ClientResponse
+    # signature; since HA pins aiohttp exactly, this also caps the resolved
+    # HA at the last release on aiohttp 3.13.
+    "aiohttp<3.14",
     "aioresponses>=0.7.6",
     "ruff>=0.8.0",
     "mypy>=1.14.0",
