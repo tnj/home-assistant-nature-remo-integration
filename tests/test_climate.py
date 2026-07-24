@@ -67,7 +67,7 @@ def _ac_entity(
 
 def _settings(**overrides: str | None) -> AirconSettings:
     """Build an AirconSettings for mock command responses."""
-    values: dict[str, str | None | dict[str, str]] = {
+    values: dict[str, str | dict[str, str] | None] = {
         "temperature": "26",
         "temperature_unit": "c",
         "mode": "cool",
