@@ -18,9 +18,8 @@ bumping). Dev deps floor `homeassistant>=2026.2` (the hacs.json minimum) and
 `pytest-homeassistant-custom-component>=0.13`: phcc pins its matching HA
 exactly, so the locked HA follows the newest phcc — without the floors,
 resolvers (including Dependabot) silently downgrade both to fossil releases.
-This repo's tests mock the client and do not use aioresponses; the
-aioresponses/aiohttp<3.14 incompatibility only constrains the aionatureremo
-repo.
+This repo's tests mock the client; the aionatureremo repo tests against a
+local aiohttp fake server — neither depends on aioresponses.
 
 Live verification against real hardware: see `.claude/skills/verify/SKILL.md`
 (dev HA launch, token handling, zero-impact write probes).
