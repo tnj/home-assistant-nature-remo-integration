@@ -13,8 +13,14 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pyt
 ```
 
 That four-command gate must be green before every commit. Python is pinned
-to 3.13 via `.python-version` (HA ≥2026.7 needs aiohttp 3.14, which
-aioresponses does not support yet — check aioresponses before unpinning).
+via `.python-version` (currently 3.14; follow HA's `requires-python` when
+bumping). Dev deps floor `homeassistant>=2026.2` (the hacs.json minimum) and
+`pytest-homeassistant-custom-component>=0.13`: phcc pins its matching HA
+exactly, so the locked HA follows the newest phcc — without the floors,
+resolvers (including Dependabot) silently downgrade both to fossil releases.
+This repo's tests mock the client and do not use aioresponses; the
+aioresponses/aiohttp<3.14 incompatibility only constrains the aionatureremo
+repo.
 
 Live verification against real hardware: see `.claude/skills/verify/SKILL.md`
 (dev HA launch, token handling, zero-impact write probes).
