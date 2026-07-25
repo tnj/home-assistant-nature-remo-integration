@@ -1,11 +1,9 @@
-"""Switch platform for binary AC / floor heater extra parameters."""
+"""Select platform for multi-option AC / floor heater extra parameters."""
 
 from __future__ import annotations
 
-from typing import Any
-
 from aionatureremo import AirconExtra
-from homeassistant.components.switch import SwitchEntity
+from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -14,7 +12,7 @@ from .entity import NatureRemoExtraEntity, extras_catalog
 
 PARALLEL_UPDATES = 1
 
-KNOWN_EXTRA_TRANSLATION_KEYS = {"autoclean": "autoclean"}
+KNOWN_EXTRA_TRANSLATION_KEYS = {"humid": "humid", "dehumid": "dehumid"}
 _ON_OFF = {"on", "off"}
 
 
@@ -23,35 +21,30 @@ async def async_setup_entry(
     entry: NatureRemoConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up switches for binary AC / floor heater extra parameters."""
+    """Set up selects for multi-option AC / floor heater extra parameters."""
     coordinator = entry.runtime_data
     known: set[str] = set()
 
     @callback
     def _sync_entities() -> None:
-        new_entities: list[NatureRemoACExtraSwitch] = []
+        new_entities: list[NatureRemoExtraSelect] = []
         for appliance_id, appliance in coordinator.data.appliances.items():
             for extra in extras_catalog(appliance):
-                # Only binary on/off extras map onto a switch; multi-option
-                # "choice" extras become selects and "time" extras become
-                # time entities. An empty options list yields an empty set
-                # here, which simply fails the comparison. availability is
-                # NOT checked: the catalog is static across operation modes
-                # and only each entry's availability flips with the current
-                # mode (probe-verified), so every binary extra gets an
-                # entity and the entity's `available` property tracks the
-                # flips.
-                if (
-                    extra.type != "choice"
-                    or {option.value for option in extra.options} != _ON_OFF
-                ):
+                values = [option.value for option in extra.options]
+                # Multi-option "choice" extras (e.g. Daikin humid:
+                # off/40%/45%/50%/continuous/beauty) map onto a select;
+                # binary on/off extras are switches and optionless "time"
+                # extras are time entities. availability is NOT checked —
+                # the catalog is static and only availability flips with
+                # the current mode, tracked by the entity's `available`.
+                if extra.type != "choice" or not values or set(values) == _ON_OFF:
                     continue
                 unique_id = f"{appliance_id}_extra_{extra.id}"
                 if unique_id in known:
                     continue
                 known.add(unique_id)
                 new_entities.append(
-                    NatureRemoACExtraSwitch(coordinator, appliance_id, extra)
+                    NatureRemoExtraSelect(coordinator, appliance_id, extra)
                 )
         if new_entities:
             async_add_entities(new_entities)
@@ -60,8 +53,12 @@ async def async_setup_entry(
     entry.async_on_unload(coordinator.async_add_listener(_sync_entities))
 
 
-class NatureRemoACExtraSwitch(NatureRemoExtraEntity, SwitchEntity):
-    """Toggles a binary remote-side extra parameter (e.g. Daikin autoclean)."""
+class NatureRemoExtraSelect(NatureRemoExtraEntity, SelectEntity):
+    """Selects one value of a multi-option remote-side extra parameter.
+
+    Options are the API's raw vocabulary (e.g. "off" / "40%" /
+    "continuous"), untranslated — the same policy as fan/swing modes.
+    """
 
     def __init__(
         self,
@@ -71,6 +68,7 @@ class NatureRemoACExtraSwitch(NatureRemoExtraEntity, SwitchEntity):
     ) -> None:
         """Initialize from the appliance's extras catalog entry."""
         super().__init__(coordinator, appliance_id, extra)
+        self._attr_options = [option.value for option in extra.options]
         translation_key = KNOWN_EXTRA_TRANSLATION_KEYS.get(extra.id)
         if translation_key is not None:
             self._attr_translation_key = translation_key
@@ -78,17 +76,13 @@ class NatureRemoACExtraSwitch(NatureRemoExtraEntity, SwitchEntity):
             self._attr_name = extra.text or extra.id
 
     @property
-    def is_on(self) -> bool | None:
-        """Return the stored extra value, if the API reports one."""
+    def current_option(self) -> str | None:
+        """The stored extra value; None until the first write stores one."""
         value = self._stored_value
-        if value is None:
+        if value is None or value not in self._attr_options:
             return None
-        return value == "on"
+        return value
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Enable the extra."""
-        await self._async_write_extra("on")
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Disable the extra."""
-        await self._async_write_extra("off")
+    async def async_select_option(self, option: str) -> None:
+        """Write the selected value."""
+        await self._async_write_extra(option)

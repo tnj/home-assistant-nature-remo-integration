@@ -9,8 +9,8 @@ custom component; see [docs/CORE_SUBMISSION.md](docs/CORE_SUBMISSION.md)).
 
 | Nature Remo | Home Assistant |
 | --- | --- |
-| Air conditioner | `climate` — modes, target temperature, fan, vertical & horizontal swing; fixed buttons (e.g. swing/tilt) as `button`; remote-side extras (e.g. Daikin mold proof) as `switch` |
-| Floor heater | `climate` — auto / warm modes, target temperature; remote-side extras (e.g. Corona save energy) as `switch` |
+| Air conditioner | `climate` — modes, target temperature, fan, vertical & horizontal swing; fixed buttons (e.g. swing/tilt) as `button`; remote-side extras as `switch` (on/off, e.g. Daikin mold proof), `select` (multi-option, e.g. humidify level) or `time` (e.g. night set mode) |
+| Floor heater | `climate` — auto / warm modes, target temperature; remote-side extras (e.g. Corona save energy) as `switch` / `select` / `time` |
 | TV | every API-enumerated button as a `button` entity (power / input / channel / volume shortcuts enabled by default; the rest one click away). Power is a toggle signal — the TV has no discrete on/off codes |
 | Light | `light` (on/off) + `button` for night / full / brightness buttons |
 | Projector | one `button` per key of the remote layout (power enabled by default; the rest one click away) |
@@ -55,7 +55,7 @@ installed automatically from the manifest.
 - Some ACs and floor heaters report relative temperatures (`-2`…`+2`) in auto
   mode; they are shown as numbers as-is.
 - Remote-side extras (mold proof, save energy, …) are only usable in some
-  operation modes; the matching `switch` reports unavailable while the
+  operation modes; the matching entity reports unavailable while the
   appliance's current mode hides it, because such a write is accepted and
   then ignored by the cloud.
 - State changes made with the appliance's own physical remote are invisible

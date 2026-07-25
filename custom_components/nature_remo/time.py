@@ -1,11 +1,11 @@
-"""Switch platform for binary AC / floor heater extra parameters."""
+"""Time platform for schedule-type AC / floor heater extra parameters."""
 
 from __future__ import annotations
 
-from typing import Any
+from datetime import time
 
 from aionatureremo import AirconExtra
-from homeassistant.components.switch import SwitchEntity
+from homeassistant.components.time import TimeEntity
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -14,8 +14,8 @@ from .entity import NatureRemoExtraEntity, extras_catalog
 
 PARALLEL_UPDATES = 1
 
-KNOWN_EXTRA_TRANSLATION_KEYS = {"autoclean": "autoclean"}
-_ON_OFF = {"on", "off"}
+KNOWN_EXTRA_TRANSLATION_KEYS = {"new_sleep": "new_sleep"}
+EXTRA_TYPE_TIME = "time"
 
 
 async def async_setup_entry(
@@ -23,35 +23,26 @@ async def async_setup_entry(
     entry: NatureRemoConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up switches for binary AC / floor heater extra parameters."""
+    """Set up time entities for schedule-type extra parameters."""
     coordinator = entry.runtime_data
     known: set[str] = set()
 
     @callback
     def _sync_entities() -> None:
-        new_entities: list[NatureRemoACExtraSwitch] = []
+        new_entities: list[NatureRemoExtraTime] = []
         for appliance_id, appliance in coordinator.data.appliances.items():
             for extra in extras_catalog(appliance):
-                # Only binary on/off extras map onto a switch; multi-option
-                # "choice" extras become selects and "time" extras become
-                # time entities. An empty options list yields an empty set
-                # here, which simply fails the comparison. availability is
-                # NOT checked: the catalog is static across operation modes
-                # and only each entry's availability flips with the current
-                # mode (probe-verified), so every binary extra gets an
-                # entity and the entity's `available` property tracks the
-                # flips.
-                if (
-                    extra.type != "choice"
-                    or {option.value for option in extra.options} != _ON_OFF
-                ):
+                # type "time" extras (e.g. Daikin new_sleep) carry an HH:MM
+                # value instead of an options list. availability is NOT
+                # checked — tracked dynamically by the entity's `available`.
+                if extra.type != EXTRA_TYPE_TIME:
                     continue
                 unique_id = f"{appliance_id}_extra_{extra.id}"
                 if unique_id in known:
                     continue
                 known.add(unique_id)
                 new_entities.append(
-                    NatureRemoACExtraSwitch(coordinator, appliance_id, extra)
+                    NatureRemoExtraTime(coordinator, appliance_id, extra)
                 )
         if new_entities:
             async_add_entities(new_entities)
@@ -60,8 +51,13 @@ async def async_setup_entry(
     entry.async_on_unload(coordinator.async_add_listener(_sync_entities))
 
 
-class NatureRemoACExtraSwitch(NatureRemoExtraEntity, SwitchEntity):
-    """Toggles a binary remote-side extra parameter (e.g. Daikin autoclean)."""
+class NatureRemoExtraTime(NatureRemoExtraEntity, TimeEntity):
+    """Sets a schedule-type remote-side extra (e.g. Daikin new_sleep).
+
+    The cloud stores an HH:MM string written as ``extra.$id=HH:MM``
+    (probe-verified). The catalog's defaultTime is the remote's default,
+    not a stored value, so the state stays unknown until the first write.
+    """
 
     def __init__(
         self,
@@ -78,17 +74,16 @@ class NatureRemoACExtraSwitch(NatureRemoExtraEntity, SwitchEntity):
             self._attr_name = extra.text or extra.id
 
     @property
-    def is_on(self) -> bool | None:
-        """Return the stored extra value, if the API reports one."""
+    def native_value(self) -> time | None:
+        """The stored HH:MM value; None until the first write stores one."""
         value = self._stored_value
         if value is None:
             return None
-        return value == "on"
+        try:
+            return time.fromisoformat(value)
+        except ValueError:
+            return None
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Enable the extra."""
-        await self._async_write_extra("on")
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Disable the extra."""
-        await self._async_write_extra("off")
+    async def async_set_value(self, value: time) -> None:
+        """Write the time as HH:MM (the API's observed wire format)."""
+        await self._async_write_extra(value.strftime("%H:%M"))

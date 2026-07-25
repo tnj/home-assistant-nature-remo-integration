@@ -56,6 +56,8 @@ reviewer-facing rationale for Home Assistant core submission lives in
 | AC fixed buttons (e.g. Fujitsu airdir-swing) | `button` | `{appliance_id}_button_{name}` |
 | Floor heater | `climate` | `{appliance_id}` |
 | Floor-heater binary extras (e.g. Corona save_energy) | `switch` (CONFIG) | `{appliance_id}_extra_{id}` |
+| AC / floor-heater multi-option extras (e.g. Daikin humid) | `select` (CONFIG) | `{appliance_id}_extra_{id}` |
+| AC / floor-heater time extras (e.g. Daikin new_sleep) | `time` (CONFIG) | `{appliance_id}_extra_{id}` |
 | TV preset buttons | `button` | `{appliance_id}_button_{name}` |
 | Light | `light` + extra `button`s | `{appliance_id}` / `{appliance_id}_button_{name}` |
 | Light-projector remote keys | `button` | `{appliance_id}_button_{name}` |
@@ -90,12 +92,15 @@ reviewer-facing rationale for Home Assistant core submission lives in
   (`range.extras` with on/off choices) are exposed as CONFIG-category
   switches; writes send only `button=<current power state>` plus the new
   extra so nothing else changes.
-- **Extra availability is mode-dependent.** The catalog itself (ids,
-  options, descriptions) is static across operation modes; only each entry's
-  `availability` flips between `"available"` and `"hidden"` for whatever
-  mode the appliance is currently in (probe-verified on Daikin arc472a82).
-  Writing a hidden extra returns HTTP 200 and is **silently ignored** by the
-  server — while still clearing every extra omitted from that write. So a
+- **Extra availability is dynamic.** The catalog itself (ids, options,
+  descriptions) is static; only each entry's `availability` changes
+  (probe-verified on Daikin arc472a82). It is three-valued: `"available"`,
+  `"hidden"` (not applicable to the current operation mode), and
+  `"unavailable"` (temporarily locked by conflicting stored state — e.g.
+  while `new_sleep` is armed, hotwind/humid/powerful report unavailable and
+  return to available when it is cleared). Writing a non-available extra
+  returns HTTP 200 and is **silently ignored** by the server — while still
+  clearing every extra omitted from that write. So a
   switch is created for **every** binary extra regardless of its current
   availability, and each switch's HA availability tracks
   `availability == "available"` on every poll. Creating switches only for
@@ -107,10 +112,17 @@ reviewer-facing rationale for Home Assistant core submission lives in
   extra back, so a missing echo raises instead of pretending the toggle
   worked. Entering a mode that hides a stored extra clears it server-side;
   that is the cloud remote's own semantics, mirrored as-is.
-- Non-binary extras are not exposed yet: multi-option choice extras (Daikin
-  `humid`/`dehumid`: off / 40% / 45% / 50% / continuous / beauty) are the
-  natural `select` candidates, and `type: "time"` extras (`new_sleep`, with
-  `defaultTime`, written as `extra.new_sleep=21:00`) the `time` candidates.
+- Non-binary extras are entities too. Multi-option choice extras (Daikin
+  `humid`/`dehumid`: off / 40% / 45% / 50% / continuous / beauty) are
+  CONFIG-category `select` entities; options are the API's raw values,
+  untranslated — the same policy as the fan/swing vocabulary — and the state
+  is unknown until a write stores a value. `type: "time"` extras
+  (`new_sleep`) are CONFIG-category `time` entities written as
+  `extra.new_sleep=HH:MM`; the catalog's `defaultTime` is the remote's
+  built-in default, not stored state, so it is never surfaced as state.
+  Both follow the same availability-tracking / echo-verification / resend
+  rules as the extra switches: switch, select, and time all subclass
+  `NatureRemoExtraEntity` in `entity.py`.
 - Fujitsu `airdir-swing`/`airdir-tilt` are one-shot commands with no
   readable state anywhere in the API (probe-verified) → press buttons.
 

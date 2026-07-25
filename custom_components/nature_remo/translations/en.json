@@ -262,6 +262,19 @@
       "autoclean": {
         "name": "Mold proof"
       }
+    },
+    "select": {
+      "humid": {
+        "name": "Humidify"
+      },
+      "dehumid": {
+        "name": "Dehumidify"
+      }
+    },
+    "time": {
+      "new_sleep": {
+        "name": "Night set mode"
+      }
     }
   }
 }

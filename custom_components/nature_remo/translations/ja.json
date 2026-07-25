@@ -262,6 +262,19 @@
       "autoclean": {
         "name": "内部クリーン"
       }
+    },
+    "select": {
+      "humid": {
+        "name": "加湿"
+      },
+      "dehumid": {
+        "name": "除湿"
+      }
+    },
+    "time": {
+      "new_sleep": {
+        "name": "ナイトセットモード"
+      }
     }
   }
 }

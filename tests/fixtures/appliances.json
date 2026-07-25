@@ -600,6 +600,36 @@
               }
             ],
             "availability": "hidden"
+          },
+          {
+            "id": "aroma",
+            "text": "Aroma",
+            "description": "Diffuses aroma while running.",
+            "type": "choice",
+            "options": [
+              {
+                "value": "off",
+                "text": "Off",
+                "default": true
+              },
+              {
+                "value": "low",
+                "text": "Low"
+              },
+              {
+                "value": "high",
+                "text": "High"
+              }
+            ],
+            "availability": "available"
+          },
+          {
+            "id": "off_timer",
+            "text": "Off Timer",
+            "description": "Stops operation at the set time.",
+            "type": "time",
+            "defaultTime": "23:00",
+            "availability": "available"
           }
         ]
       },
