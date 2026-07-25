@@ -30,7 +30,9 @@ CI runs the same gate plus Home Assistant's hassfest validation.
   shapes — change them only to match observed reality.
 - Entity/platform design decisions (why buttons instead of a `remote` entity,
   state only where the API provides it, …) are documented in
-  `docs/CORE_SUBMISSION.md` — please read it before proposing new entities.
+  `docs/DESIGN.md` — please read it before proposing new entities.
+  Repository operations (Dependabot, auto-merge, branch protection) are
+  described in `docs/MAINTENANCE.md`.
 
 ## Pull requests
 

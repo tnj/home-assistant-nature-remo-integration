@@ -10,3 +10,4 @@ dist/
 config/
 .superpowers/
 .playwright-mcp/
+docs/superpowers/

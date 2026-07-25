@@ -5,6 +5,11 @@ core-submission quality. Client library lives in a separate repo:
 [tnj/aionatureremo](https://github.com/tnj/aionatureremo) → PyPI
 `aionatureremo` (pinned in `custom_components/nature_remo/manifest.json`).
 
+Key docs: `docs/DESIGN.md` (architecture & entity design), `docs/MAINTENANCE.md`
+(Dependabot / auto-merge / ruleset / dependency-floor policy, both repos),
+`docs/CORE_SUBMISSION.md` (core submission playbook). Working specs/plans under
+`docs/superpowers/` are local-only (gitignored) — never commit them.
+
 ## Commands
 
 ```bash
