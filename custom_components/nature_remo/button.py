@@ -1,4 +1,4 @@
-"""Button platform for IR signals, extra light buttons, and TV buttons."""
+"""Button platform for IR signals, light/TV/projector buttons, and AC fixed buttons."""
 
 from __future__ import annotations
 
@@ -7,8 +7,10 @@ from dataclasses import replace
 from aionatureremo import (
     APPLIANCE_TYPE_AC,
     APPLIANCE_TYPE_LIGHT,
+    APPLIANCE_TYPE_LIGHT_PROJECTOR,
     APPLIANCE_TYPE_TV,
     ApplianceButton,
+    LightProjectorButton,
     NatureRemoError,
     Signal,
 )
@@ -147,6 +149,22 @@ async def async_setup_entry(
                     new_entities.append(
                         NatureRemoTVButton(coordinator, appliance_id, button)
                     )
+            if (
+                appliance.type == APPLIANCE_TYPE_LIGHT_PROJECTOR
+                and appliance.light_projector is not None
+            ):
+                # The library already flattened the layout tree in document
+                # order and skipped empty names.
+                for projector_button in appliance.light_projector.buttons:
+                    unique_id = f"{appliance_id}_button_{projector_button.name}"
+                    if unique_id in known:
+                        continue
+                    known.add(unique_id)
+                    new_entities.append(
+                        NatureRemoLightProjectorButton(
+                            coordinator, appliance_id, projector_button
+                        )
+                    )
             if appliance.type == APPLIANCE_TYPE_AC and appliance.aircon is not None:
                 for name in appliance.aircon.fixed_buttons:
                     # power-off is the climate entity's HVACMode.OFF.
@@ -260,6 +278,46 @@ class NatureRemoTVButton(NatureRemoApplianceEntity, ButtonEntity):
         appliance = self.appliance
         try:
             await self.coordinator.client.send_tv_button(
+                appliance.id, self._button_name
+            )
+        except NatureRemoError as err:
+            raise HomeAssistantError(
+                command_error_message(f"Failed to control {appliance.nickname}", err)
+            ) from err
+
+
+class NatureRemoLightProjectorButton(NatureRemoApplianceEntity, ButtonEntity):
+    """Presses one light projector button (light_projector layout leaf).
+
+    Deliberately NO translation keys: the leaf names are generic layout
+    slots (plus/minus, record, ...) and only the per-model "text" carries
+    the real meaning ("Volume Up", "Ok"), so the entity name comes straight
+    from that API-provided text.
+
+    Only "io" — the power key, the only everyday control — is enabled by
+    default; every other button is created disabled (same philosophy as TV
+    buttons). As with the TV power button, "io" is a toggle-only IR signal,
+    so a stateless button is the honest control surface.
+    """
+
+    def __init__(
+        self,
+        coordinator: NatureRemoCoordinator,
+        appliance_id: str,
+        button: LightProjectorButton,
+    ) -> None:
+        """Initialize from the button's API-provided display text."""
+        super().__init__(coordinator, appliance_id)
+        self._button_name = button.name
+        self._attr_unique_id = f"{appliance_id}_button_{button.name}"
+        self._attr_entity_registry_enabled_default = button.name == "io"
+        self._attr_name = button.text or button.name
+
+    async def async_press(self) -> None:
+        """Send the projector button. Stateless: the API returns no state."""
+        appliance = self.appliance
+        try:
+            await self.coordinator.client.send_light_projector_button(
                 appliance.id, self._button_name
             )
         except NatureRemoError as err:

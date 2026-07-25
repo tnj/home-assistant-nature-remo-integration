@@ -229,6 +229,127 @@ async def test_light_button_unknown_name_uses_label(
     assert state.attributes["friendly_name"] == "Bedroom Light Sleep timer"
 
 
+async def test_projector_power_button(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
+) -> None:
+    """The projector "io" power key is enabled by default and sends the press."""
+    entity_registry = er.async_get(hass)
+    entity_id = entity_registry.async_get_entity_id(
+        BUTTON_DOMAIN, DOMAIN, "appliance-projector-1_button_io"
+    )
+    assert entity_id is not None
+    entry = entity_registry.async_get(entity_id)
+    assert entry is not None
+    assert entry.disabled_by is None
+
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.attributes["friendly_name"] == "Projector Power"
+
+    await hass.services.async_call(
+        BUTTON_DOMAIN, SERVICE_PRESS, {ATTR_ENTITY_ID: entity_id}, blocking=True
+    )
+    mock_client.send_light_projector_button.assert_called_once_with(
+        "appliance-projector-1", "io"
+    )
+
+
+async def test_projector_non_power_button_disabled_by_default(
+    hass: HomeAssistant, init_integration: MockConfigEntry
+) -> None:
+    """Non-io projector buttons register but stay disabled by default."""
+    entity_registry = er.async_get(hass)
+    entity_id = entity_registry.async_get_entity_id(
+        BUTTON_DOMAIN, DOMAIN, "appliance-projector-1_button_plus"
+    )
+    assert entity_id is not None
+    entry = entity_registry.async_get(entity_id)
+    assert entry is not None
+    assert entry.disabled_by == er.RegistryEntryDisabler.INTEGRATION
+    assert entry.translation_key is None
+    # Disabled entities have no state.
+    assert hass.states.get(entity_id) is None
+
+
+async def test_projector_non_power_button_press_when_enabled(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+) -> None:
+    """An enabled non-io projector button sends its layout leaf name."""
+    # Pre-register the entity as enabled: entities only pick up
+    # disabled_by=INTEGRATION when first created in the registry.
+    entity_registry = er.async_get(hass)
+    entity_registry.async_get_or_create(
+        BUTTON_DOMAIN,
+        DOMAIN,
+        "appliance-projector-1_button_plus",
+        suggested_object_id="projector_volume_up",
+    )
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = hass.states.get("button.projector_volume_up")
+    assert state is not None
+    await hass.services.async_call(
+        BUTTON_DOMAIN,
+        SERVICE_PRESS,
+        {ATTR_ENTITY_ID: "button.projector_volume_up"},
+        blocking=True,
+    )
+    mock_client.send_light_projector_button.assert_called_once_with(
+        "appliance-projector-1", "plus"
+    )
+
+
+async def test_projector_all_layout_buttons_registered(
+    hass: HomeAssistant, init_integration: MockConfigEntry
+) -> None:
+    """Every button leaf of the flattened layout tree gets a registry entry."""
+    entity_registry = er.async_get(hass)
+    projector_unique_ids = {
+        entry.unique_id
+        for entry in entity_registry.entities.values()
+        if entry.platform == DOMAIN
+        and entry.domain == BUTTON_DOMAIN
+        and entry.unique_id.startswith("appliance-projector-1_button_")
+    }
+    assert projector_unique_ids == {
+        f"appliance-projector-1_button_{name}"
+        for name in (
+            "plus",
+            "minus",
+            "arrow-top",
+            "arrow-left",
+            "record",
+            "arrow-right",
+            "arrow-bottom",
+            "light-all",
+            "focus",
+            "io",
+            "home",
+            "return",
+            "setting",
+        )
+    }
+
+
+async def test_projector_button_names_come_from_text(
+    hass: HomeAssistant, init_integration: MockConfigEntry
+) -> None:
+    """Entity names use the API "text" verbatim (yes, "Auto Forcus" is real)."""
+    entity_registry = er.async_get(hass)
+    for name, expected in (("plus", "Volume Up"), ("focus", "Auto Forcus")):
+        entity_id = entity_registry.async_get_entity_id(
+            BUTTON_DOMAIN, DOMAIN, f"appliance-projector-1_button_{name}"
+        )
+        assert entity_id is not None
+        entry = entity_registry.async_get(entity_id)
+        assert entry is not None
+        assert entry.original_name == expected
+
+
 async def test_ac_fixed_buttons(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
 ) -> None:

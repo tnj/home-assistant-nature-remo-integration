@@ -8,8 +8,10 @@ from typing import Any
 
 from aionatureremo import (
     APPLIANCE_TYPE_AC,
+    APPLIANCE_TYPE_FLOOR_HEATER,
     EVENT_HUMIDITY,
     EVENT_TEMPERATURE,
+    Aircon,
     AirconModeRange,
     NatureRemoError,
 )
@@ -90,7 +92,7 @@ async def async_setup_entry(
     entry: NatureRemoConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up climate entities for AC appliances."""
+    """Set up climate entities for AC and floor heater appliances."""
     coordinator = entry.runtime_data
     known: set[str] = set()
 
@@ -98,14 +100,19 @@ async def async_setup_entry(
     def _sync_entities() -> None:
         new_entities: list[NatureRemoClimate] = []
         for appliance_id, appliance in coordinator.data.appliances.items():
-            if (
-                appliance.type != APPLIANCE_TYPE_AC
-                or appliance.aircon is None
-                or appliance_id in known
-            ):
+            if appliance_id in known:
                 continue
-            known.add(appliance_id)
-            new_entities.append(NatureRemoClimate(coordinator, appliance_id))
+            if appliance.type == APPLIANCE_TYPE_AC and appliance.aircon is not None:
+                known.add(appliance_id)
+                new_entities.append(NatureRemoClimate(coordinator, appliance_id))
+            elif (
+                appliance.type == APPLIANCE_TYPE_FLOOR_HEATER
+                and appliance.floor_heater is not None
+            ):
+                known.add(appliance_id)
+                new_entities.append(
+                    NatureRemoFloorHeaterClimate(coordinator, appliance_id)
+                )
         if new_entities:
             async_add_entities(new_entities)
 
@@ -124,12 +131,22 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
         self._attr_unique_id = appliance_id
 
     @property
+    def _capability(self) -> Aircon | None:
+        """The aircon-shaped capability catalog (modes/fixed buttons/extras).
+
+        Subclasses override this for appliance types that reuse the aircon
+        capability shape under another key (e.g. floor heaters).
+        """
+        return self.appliance.aircon
+
+    @property
     def _mode_range(self) -> AirconModeRange | None:
         """Return the allowed values for the current operation mode."""
-        appliance = self.appliance
-        if appliance.aircon is None or appliance.settings is None:
+        capability = self._capability
+        settings = self.appliance.settings
+        if capability is None or settings is None:
             return None
-        return appliance.aircon.modes.get(appliance.settings.mode)
+        return capability.modes.get(settings.mode)
 
     @property
     def supported_features(self) -> ClimateEntityFeature:
@@ -137,7 +154,13 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
         features = ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
         if (mode_range := self._mode_range) is None:
             return features
-        if mode_range.temperatures:
+        # Relative-offset modes (auto, sometimes dry) advertise no target
+        # temperature: min/max come from the absolute-mode union, so HA would
+        # reject every valid offset and accept only absolute values that
+        # _coerce_to_allowed would then mangle into the nearest offset.
+        if mode_range.temperatures and not _is_relative_temperature_list(
+            mode_range.temperatures
+        ):
             features |= ClimateEntityFeature.TARGET_TEMPERATURE
         if mode_range.volumes:
             features |= ClimateEntityFeature.FAN_MODE
@@ -157,11 +180,13 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
 
     @property
     def hvac_modes(self) -> list[HVACMode]:
-        """OFF plus the modes the AC supports."""
+        """OFF plus the modes the appliance supports."""
         modes = [HVACMode.OFF]
-        if (aircon := self.appliance.aircon) is not None:
+        if (capability := self._capability) is not None:
             modes.extend(
-                NATURE_TO_HVAC[mode] for mode in aircon.modes if mode in NATURE_TO_HVAC
+                NATURE_TO_HVAC[mode]
+                for mode in capability.modes
+                if mode in NATURE_TO_HVAC
             )
         return modes
 
@@ -177,14 +202,19 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
 
     @property
     def target_temperature(self) -> float | None:
-        """The set temperature; None for modes without one."""
+        """The set temperature; None for modes without an absolute one."""
         settings = self.appliance.settings
         if settings is None:
+            return None
+        mode_range = self._mode_range
+        if mode_range is not None and _is_relative_temperature_list(
+            mode_range.temperatures
+        ):
             return None
         return _parse_float(settings.temperature)
 
     def _absolute_temperatures(self) -> list[float]:
-        """All absolute temperatures the AC accepts across modes.
+        """All absolute temperatures the appliance accepts across modes.
 
         HA validates set_temperature against min/max BEFORE the entity can
         switch modes, so the advertised range must span every mode (per-mode
@@ -195,11 +225,11 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
         starts with '+'/'-' or parses to <= 0 -- no real AC setpoint is at
         or below zero in either Celsius or Fahrenheit.
         """
-        aircon = self.appliance.aircon
-        if aircon is None:
+        capability = self._capability
+        if capability is None:
             return []
         values: set[float] = set()
-        for mode_range in aircon.modes.values():
+        for mode_range in capability.modes.values():
             if _is_relative_temperature_list(mode_range.temperatures):
                 continue
             for value in mode_range.temperatures:
@@ -321,18 +351,25 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
         """Send the full current settings with the requested overrides."""
         appliance = self.appliance
         settings = appliance.settings
-        aircon = appliance.aircon
+        capability = self._capability
         mode = operation_mode or (settings.mode if settings else "")
         payload: dict[str, str] = {"button": button}
         if mode:
             payload["operation_mode"] = mode
-            mode_range = aircon.modes.get(mode) if aircon else None
+            mode_range = capability.modes.get(mode) if capability else None
             if mode_range is not None:
                 current_temp = settings.temperature if settings else ""
                 current_vol = settings.volume if settings else ""
                 current_dir = settings.direction if settings else ""
                 current_dirh = settings.direction_h if settings else ""
-                if mode_range.temperatures:
+                # Relative-offset modes get no temperature field at all: the
+                # stored value may be on the other scale (warm "25" would
+                # coerce to offset "+2"), and the cloud restores its own
+                # remembered per-mode value when the field is omitted
+                # (probe-verified).
+                if mode_range.temperatures and not _is_relative_temperature_list(
+                    mode_range.temperatures
+                ):
                     payload["temperature"] = _coerce_to_allowed(
                         temperature if temperature is not None else current_temp,
                         mode_range.temperatures,
@@ -361,16 +398,35 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
             dict(settings.extra) if settings is not None and settings.extra else None
         )
         try:
-            new_settings = await self.coordinator.client.set_aircon_settings(
-                appliance.id, extra=extra, **payload
-            )
+            await self._async_write_settings(extra=extra, payload=payload)
         except NatureRemoError as err:
             raise HomeAssistantError(
                 command_error_message(f"Failed to update {appliance.nickname}", err)
             ) from err
+
+    async def _async_write_settings(
+        self, *, extra: dict[str, str] | None, payload: dict[str, str]
+    ) -> None:
+        """Perform the API write and apply the optimistic coordinator update.
+
+        Overridable so subclasses can target a different settings endpoint;
+        _async_send keeps the error wrapping around this call.
+        """
+        appliance = self.appliance
+        old_mode = appliance.settings.mode if appliance.settings else None
+        new_settings = await self.coordinator.client.set_aircon_settings(
+            appliance.id, extra=extra, **payload
+        )
         self.coordinator.async_update_appliance(
             replace(appliance, settings=new_settings)
         )
+        if new_settings.mode != old_mode:
+            # aircon_settings returns bare settings while extras availability
+            # is per-mode, so the stored catalog is stale until the next GET.
+            # Refresh now so extras switches can't offer writes the server
+            # would silently ignore. (floor_heater_settings returns the full
+            # appliance, so the subclass needs no refresh.)
+            await self.coordinator.async_request_refresh()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set the HVAC mode; OFF maps to the power-off button."""
@@ -378,8 +434,12 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
             await self._async_send(button=POWER_OFF_BUTTON)
             return
         nature_mode = HVAC_TO_NATURE.get(hvac_mode)
-        aircon = self.appliance.aircon
-        if nature_mode is None or aircon is None or nature_mode not in aircon.modes:
+        capability = self._capability
+        if (
+            nature_mode is None
+            or capability is None
+            or nature_mode not in capability.modes
+        ):
             raise ServiceValidationError(f"Unsupported HVAC mode: {hvac_mode}")
         await self._async_send(operation_mode=nature_mode)
 
@@ -427,3 +487,39 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
                 f"Unsupported horizontal swing mode: {swing_horizontal_mode}"
             )
         await self._async_send(air_direction_h=swing_horizontal_mode)
+
+
+class NatureRemoFloorHeaterClimate(NatureRemoClimate):
+    """Climate entity backed by a Nature Remo floor heater appliance.
+
+    Floor heaters expose the aircon capability shape under the
+    ``floor_heater`` key, but writes must go through the dedicated
+    ``floor_heater_settings`` endpoint (``aircon_settings`` is HTTP 500 for
+    them, probe-verified on a Corona rfc-a04).
+    """
+
+    @property
+    def _capability(self) -> Aircon | None:
+        """The floor heater's aircon-shaped capability catalog."""
+        return self.appliance.floor_heater
+
+    async def _async_write_settings(
+        self, *, extra: dict[str, str] | None, payload: dict[str, str]
+    ) -> None:
+        """Write via floor_heater_settings; the response is a full Appliance.
+
+        Only the keys the endpoint accepts are extracted from the payload
+        (floor heater mode ranges have no vol/dir/dirh, so _async_send never
+        adds the aircon-only keys, but keep the extraction explicit). The
+        response replaces the whole appliance, so a fresh extras catalog —
+        including per-mode availability — comes along for free.
+        """
+        appliance = self.appliance
+        new_appliance = await self.coordinator.client.set_floor_heater_settings(
+            appliance.id,
+            operation_mode=payload.get("operation_mode"),
+            temperature=payload.get("temperature"),
+            button=payload.get("button"),
+            extra=extra,
+        )
+        self.coordinator.async_update_appliance(new_appliance)

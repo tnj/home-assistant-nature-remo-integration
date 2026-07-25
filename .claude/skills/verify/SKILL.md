@@ -8,6 +8,10 @@ How to run this integration in a local Home Assistant and observe it live.
 uv sync                                   # needs sandbox disabled (uv cache in ~/.cache/uv)
 mkdir -p config && ln -sfn ../custom_components config/custom_components
 uv run hass -c config --log-file config/home-assistant.log   # background, sandbox disabled (port 8123 + network)
+# When the venv carries an unreleased aionatureremo (local [tool.uv.sources]
+# override), add: --skip-pip-packages aionatureremo
+# (the manifest pins the released version; hass would otherwise pip-install it
+# over the local build at startup)
 ```
 
 - First boot: onboarding at http://localhost:8123 creates a local dev user (config/ is gitignored, so each fresh clone onboards anew; pick any throwaway credentials).

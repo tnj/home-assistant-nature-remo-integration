@@ -19,8 +19,8 @@ reviewer-facing rationale for Home Assistant core submission lives in
    Hue uses for bridge-enumerated scenes — instead of a generic
    send-command service.
 3. **Commands resend full state.** Where the API expects complete settings
-   (`aircon_settings`), the integration always sends the current settings
-   plus the change, so nothing is silently reset.
+   (`aircon_settings`, `floor_heater_settings`), the integration always sends
+   the current settings plus the change, so nothing is silently reset.
 
 ## Architecture
 
@@ -32,8 +32,12 @@ reviewer-facing rationale for Home Assistant core submission lives in
   typed exceptions; 401 → reauth flow, 429/network → `UpdateFailed` with
   the rate-limit reset time in the message.
 - Coordinator data lives in `entry.runtime_data`. Command responses
-  (aircon/tv/light/offset) update coordinator data optimistically via
-  `async_set_updated_data`; the next poll reconciles with reality.
+  (aircon/floor-heater/tv/light/offset) update coordinator data
+  optimistically via `async_set_updated_data`; the next poll reconciles with
+  reality. Floor-heater responses carry the whole Appliance (fresh extras
+  catalog included); an AC mode change additionally triggers one coordinator
+  refresh, because `aircon_settings` returns bare settings while extras
+  availability is per-mode.
 - Devices and appliances are added dynamically when they appear and removed
   from the device registry when they disappear. Remo hubs are eagerly
   registered in `async_setup_entry` so `via_device` links never dangle
@@ -50,8 +54,11 @@ reviewer-facing rationale for Home Assistant core submission lives in
 | AC | `climate` | `{appliance_id}` |
 | AC binary extras (e.g. Daikin autoclean) | `switch` (CONFIG) | `{appliance_id}_extra_{id}` |
 | AC fixed buttons (e.g. Fujitsu airdir-swing) | `button` | `{appliance_id}_button_{name}` |
+| Floor heater | `climate` | `{appliance_id}` |
+| Floor-heater binary extras (e.g. Corona save_energy) | `switch` (CONFIG) | `{appliance_id}_extra_{id}` |
 | TV preset buttons | `button` | `{appliance_id}_button_{name}` |
 | Light | `light` + extra `button`s | `{appliance_id}` / `{appliance_id}_button_{name}` |
+| Light-projector remote keys | `button` | `{appliance_id}_button_{name}` |
 | Learned IR signals | `button` | `{appliance_id}_signal_{signal_id}` |
 | Smart meter (power, energy bought/sold) | `sensor` | `{appliance_id}_{key}` |
 
@@ -67,17 +74,68 @@ reviewer-facing rationale for Home Assistant core submission lives in
   Per-mode enforcement happens at send time by snapping to that mode's
   allowed list. Relative lists (auto, sometimes dry — values with `+`/`-`
   prefixes or ≤ 0) are excluded from the union.
+- **Relative-offset modes advertise no target temperature**: the feature
+  flag is dropped and the attribute is `None` while the current mode's list
+  is relative, because HA validates `set_temperature` against the absolute
+  union bounds — every valid offset would be rejected and every accepted
+  absolute value mangled into the nearest offset. Sends in relative modes
+  omit the `temperature` field entirely; the cloud restores its remembered
+  per-mode value (probe-verified).
 - Fan / swing / horizontal-swing options are the API's raw vocabulary,
   untranslated.
 - `settings.extra` is **remote-side state** baked into every IR frame the
   cloud remote transmits (e.g. Daikin `autoclean`). The climate entity
-  passes the stored `extra` back on every `aircon_settings` send — dropping
-  it would silently clear the state on the physical remote. Binary catalog
-  entries (`range.extras` with availability=available and on/off choices)
-  are exposed as CONFIG-category switches; writes send only
-  `button=<current power state>` plus the new extra so nothing else changes.
+  passes the stored `extra` back on every settings send — dropping it would
+  silently clear the state on the physical remote. Binary catalog entries
+  (`range.extras` with on/off choices) are exposed as CONFIG-category
+  switches; writes send only `button=<current power state>` plus the new
+  extra so nothing else changes.
+- **Extra availability is mode-dependent.** The catalog itself (ids,
+  options, descriptions) is static across operation modes; only each entry's
+  `availability` flips between `"available"` and `"hidden"` for whatever
+  mode the appliance is currently in (probe-verified on Daikin arc472a82).
+  Writing a hidden extra returns HTTP 200 and is **silently ignored** by the
+  server — while still clearing every extra omitted from that write. So a
+  switch is created for **every** binary extra regardless of its current
+  availability, and each switch's HA availability tracks
+  `availability == "available"` on every poll. Creating switches only for
+  extras available at scan time (the pre-0.3 behavior) left switches that
+  looked alive while every toggle was a server-side no-op. Two further
+  guards close the polling gap: an AC mode change triggers a coordinator
+  refresh (the bare-settings response leaves the catalog stale), and every
+  extra write verifies the response echo — a success always echoes the
+  extra back, so a missing echo raises instead of pretending the toggle
+  worked. Entering a mode that hides a stored extra clears it server-side;
+  that is the cloud remote's own semantics, mirrored as-is.
+- Non-binary extras are not exposed yet: multi-option choice extras (Daikin
+  `humid`/`dehumid`: off / 40% / 45% / 50% / continuous / beauty) are the
+  natural `select` candidates, and `type: "time"` extras (`new_sleep`, with
+  `defaultTime`, written as `extra.new_sleep=21:00`) the `time` candidates.
 - Fujitsu `airdir-swing`/`airdir-tilt` are one-shot commands with no
   readable state anywhere in the API (probe-verified) → press buttons.
+
+## Floor heater
+
+`FLOOR_HEATER` appliances carry a `floor_heater` capability object with
+exactly the aircon catalog shape (`range.modes` / `range.fixedButtons` /
+`range.extras`, `tempUnit`), so they reuse the climate machinery. Modes
+observed are `auto` (relative temperatures, e.g. `["-2"…"2"]`) and `warm`
+(absolute 17–30); min/max/step come from the same union of absolute lists,
+and sends snap to the current mode's allowed list. Binary extras (e.g.
+Corona `save_energy`) become CONFIG switches under the same rules as AC
+extras, including the resend-every-time requirement — an extra omitted from
+a write is cleared.
+
+Writes go to `POST /1/appliances/{id}/floor_heater_settings`, **not**
+`aircon_settings`, which answers HTTP 500 for a floor heater. The
+parameters mirror aircon settings (`operation_mode`, `temperature`,
+`button`, dotted `extra.$id`): power-off is `button=power-off`, power-on is
+sending `operation_mode` (the server then reports `button: ""`). Two
+differences from `aircon_settings`: the response is the **whole Appliance
+object** rather than bare settings, and out-of-range temperatures are
+**clamped server-side** to the ends of the current mode's list (16 → 17 in
+warm, 5 → 2 in auto) instead of erroring. Client-side snapping stays as
+defense in depth.
 
 ## TV
 
@@ -96,6 +154,22 @@ is off) is in [CORE_SUBMISSION.md](CORE_SUBMISSION.md#design-rationale-notes).
 buttons (`night`, `on-100`, brightness/colortemp steps, …) are individual
 button entities.
 
+## Light projector
+
+`LIGHT_PROJECTOR` appliances report no state at all (`settings: null`), so
+they are stateless buttons. Their capability object is
+`light_projector.layout`: a UI layout **tree** (root → template/composite
+nodes → leaves with `type == "button"`), not the flat `buttons[]` array TV
+and light appliances use. The client library flattens the tree in document
+order (skipping leaves with an empty `name`) and the integration creates one
+`button` per flattened leaf.
+On a leaf, `name` is the send token and `text` is the display name —
+`label` is empty here, unlike TV/light buttons. Only the power key
+(`name == "io"`) is enabled by default; the rest ship
+`entity_registry_enabled_default = False`, the same philosophy as TV
+buttons. Sends are `POST /1/appliances/{id}/light_projector` with
+`button=<leaf name>`, answered with 200 `{}`.
+
 ## Smart meter
 
 kWh = raw counter × coefficient (EPC 211, default 1) × unit multiplier
@@ -112,9 +186,10 @@ Motion (`mo`) is a **timestamp sensor** (last detected), not a
 ## Out of scope (v1)
 
 Other ECHONET appliances (solar, battery, EV, water heater), lock devices
-(QRIO/SESAME), FLOOR_HEATER (aircon-compatible API; easy future climate),
-LIGHT_PROJECTOR, BLE macros, multi-home API, whole-home energy timeseries,
-ECHONET refresh/set, Local API, OAuth2 (business-only).
+(QRIO/SESAME — a `BLE_SESAME5` appliance carries only static `ble` pairing
+info, no lock state and no battery, so polling cannot back a `lock` entity),
+BLE macros, multi-home API, whole-home energy timeseries, ECHONET
+refresh/set, Local API, OAuth2 (business-only).
 
 ## Known risks
 

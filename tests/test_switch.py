@@ -1,21 +1,58 @@
 """Tests for the Nature Remo switch platform (AC extras)."""
 
 from dataclasses import replace
+from datetime import timedelta
 from unittest.mock import AsyncMock
 
+import homeassistant.util.dt as dt_util
+import pytest
 from aionatureremo import AirconSettings, Appliance
 from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
 from homeassistant.const import (
     ATTR_ENTITY_ID,
     SERVICE_TURN_OFF,
+    SERVICE_TURN_ON,
+    STATE_OFF,
     STATE_ON,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
     EntityCategory,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+)
+
+from custom_components.nature_remo.const import DOMAIN
 
 ENTITY = "switch.living_ac_mold_proof"
+FH_ENTITY = "switch.floor_heater_save_energy"
+
+
+def _with_extra_availability(
+    appliances: list[Appliance], appliance_id: str, availability: dict[str, str]
+) -> list[Appliance]:
+    """Rebuild the appliance list with selected extras' availability changed."""
+    modified = []
+    for appliance in appliances:
+        if appliance.id == appliance_id and appliance.aircon is not None:
+            aircon = replace(
+                appliance.aircon,
+                extras=[
+                    replace(
+                        extra,
+                        availability=availability.get(extra.id, extra.availability),
+                    )
+                    for extra in appliance.aircon.extras
+                ],
+            )
+            modified.append(replace(appliance, aircon=aircon))
+        else:
+            modified.append(appliance)
+    return modified
 
 
 async def test_extra_switch_state(
@@ -60,33 +97,95 @@ async def test_extra_switch_turn_off_preserves_power(
     assert state.state == "off"  # optimistic update from the response
 
 
-async def test_no_switch_for_unavailable_extra(
+async def test_hidden_extra_still_gets_switch_but_unavailable(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
     mock_client: AsyncMock,
     appliances: list[Appliance],
 ) -> None:
-    """Extras whose availability is not 'available' get no switch."""
-    modified = []
-    for appliance in appliances:
-        if appliance.id == "appliance-ac-1" and appliance.aircon is not None:
-            aircon = replace(
-                appliance.aircon,
-                extras=[
-                    replace(extra, availability="unavailable")
-                    for extra in appliance.aircon.extras
-                ],
-            )
-            modified.append(replace(appliance, aircon=aircon))
-        else:
-            modified.append(appliance)
-    mock_client.get_appliances.return_value = modified
+    """A binary extra hidden at setup gets a switch, marked unavailable.
+
+    The catalog is static across modes; only availability flips with the
+    current mode, so the entity must exist from the start and track it.
+    """
+    mock_client.get_appliances.return_value = _with_extra_availability(
+        appliances, "appliance-ac-1", {"autoclean": "hidden"}
+    )
 
     mock_config_entry.add_to_hass(hass)
     await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()
 
-    assert hass.states.get(ENTITY) is None
+    state = hass.states.get(ENTITY)
+    assert state is not None
+    assert state.state == STATE_UNAVAILABLE
+
+
+async def test_bedroom_ac_binary_extras_get_switches(
+    hass: HomeAssistant, init_integration: MockConfigEntry
+) -> None:
+    """Every binary extra gets a switch regardless of current availability."""
+    # powerful: available in the fixture's warm mode, stored value "off".
+    powerful = hass.states.get("switch.bedroom_ac_powerful")
+    assert powerful is not None
+    assert powerful.state == STATE_OFF
+
+    # hotwind: available but never stored in settings.extra -> is_on None.
+    hotwind = hass.states.get("switch.bedroom_ac_hot_airflow")
+    assert hotwind is not None
+    assert hotwind.state == STATE_UNKNOWN
+
+    # autoclean: hidden in warm mode -> the switch EXISTS but is unavailable
+    # (a write to a hidden extra is silently ignored by the API).
+    autoclean = hass.states.get("switch.bedroom_ac_mold_proof")
+    assert autoclean is not None
+    assert autoclean.state == STATE_UNAVAILABLE
+
+
+async def test_non_binary_extras_get_no_switch(
+    hass: HomeAssistant, init_integration: MockConfigEntry
+) -> None:
+    """Multi-option choice and time extras never become switches."""
+    entity_registry = er.async_get(hass)
+    for extra_id in ("humid", "dehumid", "new_sleep"):
+        assert (
+            entity_registry.async_get_entity_id(
+                SWITCH_DOMAIN, DOMAIN, f"appliance-ac-2_extra_{extra_id}"
+            )
+            is None
+        )
+
+
+async def test_extra_switch_tracks_availability_flip(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """Switches follow per-poll availability flips caused by mode changes."""
+    assert hass.states.get("switch.bedroom_ac_powerful").state == STATE_OFF
+    assert hass.states.get("switch.bedroom_ac_mold_proof").state == STATE_UNAVAILABLE
+
+    mock_client.get_appliances.return_value = _with_extra_availability(
+        appliances,
+        "appliance-ac-2",
+        {"powerful": "hidden", "dehumid": "available", "autoclean": "available"},
+    )
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=61))
+    await hass.async_block_till_done()
+
+    # powerful went hidden -> unavailable.
+    assert hass.states.get("switch.bedroom_ac_powerful").state == STATE_UNAVAILABLE
+    # autoclean became available; never stored -> unknown.
+    assert hass.states.get("switch.bedroom_ac_mold_proof").state == STATE_UNKNOWN
+    # dehumid is now available but non-binary, so it still gets no switch.
+    entity_registry = er.async_get(hass)
+    assert (
+        entity_registry.async_get_entity_id(
+            SWITCH_DOMAIN, DOMAIN, "appliance-ac-2_extra_dehumid"
+        )
+        is None
+    )
 
 
 async def test_extra_switch_preserves_power_off(
@@ -123,3 +222,74 @@ async def test_extra_switch_preserves_power_off(
     mock_client.set_aircon_settings.assert_called_once_with(
         "appliance-ac-1", button="power-off", extra={"autoclean": "off"}
     )
+
+
+async def test_extra_switch_ignored_write_raises(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
+) -> None:
+    """A 200 whose echo lacks the extra means the server ignored the write.
+
+    Happens when the extra went hidden between polls (e.g. right after an
+    external mode change): a successful write always echoes the extra back
+    (probe-verified), so a missing echo is a silent server-side no-op. The
+    entity applies server truth first (state goes unknown), then raises.
+    """
+    mock_client.set_aircon_settings.return_value = AirconSettings(
+        temperature="26",
+        temperature_unit="c",
+        mode="cool",
+        volume="auto",
+        direction="swing",
+        direction_h="",
+        button="",
+        updated_at=None,
+        extra={},
+    )
+    with pytest.raises(HomeAssistantError, match="ignored the write"):
+        await hass.services.async_call(
+            SWITCH_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: ENTITY}, blocking=True
+        )
+    state = hass.states.get(ENTITY)
+    assert state is not None
+    assert state.state == STATE_UNKNOWN  # server truth applied before the raise
+
+
+async def test_floor_heater_extra_switch_state(
+    hass: HomeAssistant, init_integration: MockConfigEntry
+) -> None:
+    """A floor heater binary extra becomes a config-category switch."""
+    state = hass.states.get(FH_ENTITY)
+    assert state is not None
+    assert state.state == STATE_OFF  # available; stored value "off"
+
+    entity_registry = er.async_get(hass)
+    entry = entity_registry.async_get(FH_ENTITY)
+    assert entry is not None
+    assert entry.unique_id == "appliance-floorheater-1_extra_save_energy"
+    assert entry.entity_category is EntityCategory.CONFIG
+
+
+async def test_floor_heater_extra_switch_turn_on(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """Toggling writes through floor_heater_settings, never aircon_settings."""
+    floor_heater = next(a for a in appliances if a.id == "appliance-floorheater-1")
+    assert floor_heater.settings is not None
+    # The endpoint returns the FULL updated Appliance, not bare settings.
+    mock_client.set_floor_heater_settings.return_value = replace(
+        floor_heater,
+        settings=replace(floor_heater.settings, extra={"save_energy": "on"}),
+    )
+    await hass.services.async_call(
+        SWITCH_DOMAIN, SERVICE_TURN_ON, {ATTR_ENTITY_ID: FH_ENTITY}, blocking=True
+    )
+    mock_client.set_floor_heater_settings.assert_called_once_with(
+        "appliance-floorheater-1", button="power-off", extra={"save_energy": "on"}
+    )
+    mock_client.set_aircon_settings.assert_not_called()
+    state = hass.states.get(FH_ENTITY)
+    assert state is not None
+    assert state.state == STATE_ON  # optimistic update from the response

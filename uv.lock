@@ -168,14 +168,14 @@ wheels = [
 
 [[package]]
 name = "aionatureremo"
-version = "0.2.0"
+version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e0/7f/bd5979d220d7b9129f43eee23b4c9fb177f2c55992ca2c867b75473e46ef/aionatureremo-0.2.0.tar.gz", hash = "sha256:64e34d139017ba52c7ecd5cee5aecb29def9a7c50c30580991f8cdd987a4749e", size = 12401, upload-time = "2026-07-23T00:13:17.376Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fe/a2/931b9a601c03a5278a77356a154bc36a44418a79da212dc826359b7f3391/aionatureremo-0.3.0.tar.gz", hash = "sha256:4e2b58d987f4b9f9a0da58b2ee83858dd52d35081cfb36522625003b470697b7", size = 78268, upload-time = "2026-07-25T04:05:08.286Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/36/01/00a658c3db2bf538f6cdee8a8db225585d980f73409654391269f536a939/aionatureremo-0.2.0-py3-none-any.whl", hash = "sha256:d7f932a5e9c847cd0e65cc4551597dbf3c55586bb711e382675d7ef565b02a27", size = 9427, upload-time = "2026-07-23T00:13:16.208Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/94/4ff9d20b5fc47935be51909ca02ead25651f92b2385de955b2128f7aea5d/aionatureremo-0.3.0-py3-none-any.whl", hash = "sha256:5bec4a5d843dfa825e1d58446d49eb8e5932ad7162fecba3d3937ff46b81cde7", size = 10868, upload-time = "2026-07-25T04:05:06.966Z" },
 ]
 
 [[package]]

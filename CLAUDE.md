@@ -53,10 +53,12 @@ via trusted publishing; then bump the pin here.
   `entity_registry_enabled_default = False`.
 - **`settings.extra` is remote-side state** (e.g. Daikin `autoclean`) baked
   into every transmitted IR frame. The climate entity passes it back on
-  every `aircon_settings` send (dropping it silently clears the state) and
-  binary catalog entries (`range.extras`, availability=available, on/off)
-  become CONFIG-category `switch` entities. Writes send only
-  `button=<current>` + the new extra so nothing else changes.
+  every settings send (dropping it silently clears the state); writes send
+  only `button=<current>` + the new extra so nothing else changes. Every
+  binary (on/off) `range.extras` entry becomes a CONFIG-category `switch`
+  **regardless of current availability** — availability flips per operation
+  mode and hidden writes are silently ignored, so each switch instead tracks
+  `availability == "available"` on every poll.
 - **Fujitsu `airdir-swing`/`airdir-tilt` are one-shot** (probe-verified: no
   trace anywhere in the API after sending) → they stay press buttons.
 - Climate min/max/step come from the **union of absolute mode temperature
@@ -81,7 +83,22 @@ via trusted publishing; then bump the pin here.
   (e.g. `["-5",…,"5"]`); detect via `+`/`-` prefix or value ≤ 0.
 - Unsupported `dirh` ranges arrive as `[""]` (placeholder) — empty strings
   are stripped in `_str_list`.
-- `extra` request fields are dotted form keys: `extra.$id=$value`.
+- `extra` request fields are dotted form keys: `extra.$id=$value`; `type` is
+  `choice` (binary or multi-option, e.g. `50%`) or `time` (`defaultTime`, sent
+  as `21:00`). `availability` (`"available"`/`"hidden"`) flips **per operation
+  mode** over an otherwise static catalog; a hidden write returns 200 and is
+  **silently ignored** — while still clearing the extras omitted from it.
+- **FLOOR_HEATER** = aircon-shaped catalog under key `floor_heater`; write via
+  `POST .../floor_heater_settings` (aircon_settings → HTTP 500), which answers
+  with the **full Appliance** and **clamps** out-of-range temps to the current
+  mode's list ends.
+- **LIGHT_PROJECTOR** capability `light_projector.layout` is a UI **tree**, not
+  `buttons[]`: leaves `type=="button"`, display name in `text` (`label` empty);
+  send `POST .../light_projector` `button=<leaf name>` → `{}`. No state.
+- Multi-home is **flattened** (one token, all homes, no home field anywhere).
+  `BLE_SESAME5` exposes only static `ble` pairing info, no lock state.
+  `device.online` exists only on newer firmware (Nature-2W3 / Remo 2.x /
+  Remo-E-lite); elsewhere staleness is the only offline signal.
 - Smart meter kWh = raw × coefficient(EPC 211, default 1) × unit
   multiplier(EPC 225, **lookup table** — codes 10–13 multiply; never use a
   `10^-n` formula).

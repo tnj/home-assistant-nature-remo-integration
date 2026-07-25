@@ -10,8 +10,10 @@ custom component; see [docs/CORE_SUBMISSION.md](docs/CORE_SUBMISSION.md)).
 | Nature Remo | Home Assistant |
 | --- | --- |
 | Air conditioner | `climate` — modes, target temperature, fan, vertical & horizontal swing; fixed buttons (e.g. swing/tilt) as `button`; remote-side extras (e.g. Daikin mold proof) as `switch` |
+| Floor heater | `climate` — auto / warm modes, target temperature; remote-side extras (e.g. Corona save energy) as `switch` |
 | TV | every API-enumerated button as a `button` entity (power / input / channel / volume shortcuts enabled by default; the rest one click away). Power is a toggle signal — the TV has no discrete on/off codes |
 | Light | `light` (on/off) + `button` for night / full / brightness buttons |
+| Projector | one `button` per key of the remote layout (power enabled by default; the rest one click away) |
 | Custom IR appliance | one `button` per learned signal |
 | Built-in sensors | `sensor` — temperature, humidity, brightness, last motion |
 | Sensor calibration | `number` — temperature / humidity offsets |
@@ -50,8 +52,12 @@ installed automatically from the manifest.
   (API budget: 30 requests / 5 minutes).
 - Motion is exposed as a "last motion" timestamp — the API only reports the
   most recent detection, so a realtime motion binary sensor is not possible.
-- Some ACs report relative temperatures (`-2`…`+2`) in auto mode; they are
-  shown as numbers as-is.
+- Some ACs and floor heaters report relative temperatures (`-2`…`+2`) in auto
+  mode; they are shown as numbers as-is.
+- Remote-side extras (mold proof, save energy, …) are only usable in some
+  operation modes; the matching `switch` reports unavailable while the
+  appliance's current mode hides it, because such a write is accepted and
+  then ignored by the cloud.
 - State changes made with the appliance's own physical remote are invisible
   to Nature and therefore to this integration.
 - The 30 req / 5 min budget is **per Nature account**: running this

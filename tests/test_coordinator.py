@@ -35,10 +35,13 @@ async def test_update_success(coordinator: NatureRemoCoordinator) -> None:
     assert set(data.devices) == {"device-remo3-1", "device-mini-1", "device-remoe-1"}
     assert set(data.appliances) == {
         "appliance-ac-1",
+        "appliance-ac-2",
         "appliance-tv-1",
         "appliance-light-1",
         "appliance-ir-1",
         "appliance-meter-1",
+        "appliance-floorheater-1",
+        "appliance-projector-1",
     }
 
 

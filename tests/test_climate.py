@@ -37,6 +37,7 @@ from homeassistant.const import (
     ATTR_TEMPERATURE,
     SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
+    STATE_UNAVAILABLE,
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
@@ -50,6 +51,8 @@ from custom_components.nature_remo.climate import (
 from custom_components.nature_remo.coordinator import NatureRemoData
 
 ENTITY = "climate.living_ac"
+FH_ENTITY = "climate.floor_heater"
+FH_ID = "appliance-floorheater-1"
 
 
 def _ac_entity(
@@ -198,12 +201,24 @@ async def test_climate_set_temperature_with_mode(
 
 
 async def test_climate_set_hvac_mode_coerces_settings(
-    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
 ) -> None:
     """cool(26)→warm snaps the temperature into warm's 18-22 range."""
     mock_client.set_aircon_settings.return_value = _settings(
         mode="warm", temperature="22"
     )
+    # A mode change triggers a coordinator refresh (extras availability is
+    # per-mode and aircon_settings returns no catalog); serve the
+    # post-change server truth so the refresh doesn't roll the state back.
+    mock_client.get_appliances.return_value = [
+        replace(a, settings=replace(a.settings, mode="warm", temperature="22"))
+        if a.id == "appliance-ac-1"
+        else a
+        for a in appliances
+    ]
     await hass.services.async_call(
         CLIMATE_DOMAIN,
         SERVICE_SET_HVAC_MODE,
@@ -215,6 +230,7 @@ async def test_climate_set_hvac_mode_coerces_settings(
     assert kwargs["temperature"] == "22"  # 26 snapped to warm's max 22
     assert kwargs["button"] == ""
     assert "air_direction_h" not in kwargs  # warm has no dirh range
+    assert mock_client.get_appliances.call_count == 2  # setup + catalog refresh
     state = hass.states.get(ENTITY)
     assert state is not None
     assert state.state == HVACMode.HEAT
@@ -466,3 +482,196 @@ async def test_climate_without_extra_sends_none(
         CLIMATE_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: ENTITY}, blocking=True
     )
     assert mock_client.set_aircon_settings.call_args.kwargs["extra"] is None
+
+
+def _floor_heater_response(appliances: list[Appliance], **overrides: str) -> Appliance:
+    """A full updated Appliance, as floor_heater_settings responses carry."""
+    floor_heater = next(a for a in appliances if a.id == FH_ID)
+    assert floor_heater.settings is not None
+    return replace(floor_heater, settings=replace(floor_heater.settings, **overrides))
+
+
+async def test_floor_heater_state(
+    hass: HomeAssistant, init_integration: MockConfigEntry
+) -> None:
+    """The floor heater exposes off/auto/heat and warm's absolute temp range."""
+    state = hass.states.get(FH_ENTITY)
+    assert state is not None
+    assert state.state == HVACMode.OFF  # settings.button == "power-off"
+    assert set(state.attributes[ATTR_HVAC_MODES]) == {
+        HVACMode.OFF,
+        HVACMode.AUTO,
+        HVACMode.HEAT,
+    }
+    # Union of absolute mode lists: warm 17-30; auto's relative -2..2 excluded.
+    assert state.attributes[ATTR_MIN_TEMP] == 17.0
+    assert state.attributes[ATTR_MAX_TEMP] == 30.0
+    assert state.attributes[ATTR_TARGET_TEMP_STEP] == 1.0
+    # auto is a relative-offset mode: no target temperature is advertised
+    # (HA validates set_temperature against the absolute 17-30 bounds, which
+    # would make every valid offset unreachable and mangle accepted values).
+    assert ATTR_TEMPERATURE not in state.attributes
+
+
+async def test_floor_heater_turn_on(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """turn_on powers on via operation_mode and resends the stored extra."""
+    mock_client.set_floor_heater_settings.return_value = _floor_heater_response(
+        appliances, button=""
+    )
+    await hass.services.async_call(
+        CLIMATE_DOMAIN, SERVICE_TURN_ON, {ATTR_ENTITY_ID: FH_ENTITY}, blocking=True
+    )
+    call = mock_client.set_floor_heater_settings.call_args
+    assert call.args == (FH_ID,)
+    assert call.kwargs["button"] == ""
+    assert call.kwargs["operation_mode"] == "auto"
+    assert call.kwargs["extra"] == {"save_energy": "off"}
+    # Floor heaters never write through aircon_settings (HTTP 500 for them).
+    mock_client.set_aircon_settings.assert_not_called()
+    state = hass.states.get(FH_ENTITY)
+    assert state is not None
+    assert state.state == HVACMode.AUTO  # optimistic update from the response
+
+
+async def test_floor_heater_set_hvac_mode_heat_snaps_temperature(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """auto(0)→warm snaps the temperature into warm's 17-30 list."""
+    mock_client.set_floor_heater_settings.return_value = _floor_heater_response(
+        appliances, mode="warm", temperature="17", button=""
+    )
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_HVAC_MODE,
+        {ATTR_ENTITY_ID: FH_ENTITY, ATTR_HVAC_MODE: HVACMode.HEAT},
+        blocking=True,
+    )
+    kwargs = mock_client.set_floor_heater_settings.call_args.kwargs
+    assert kwargs["operation_mode"] == "warm"
+    assert kwargs["temperature"] == "17"  # "0" snapped to warm's closest value
+    assert kwargs["button"] == ""
+    assert kwargs["extra"] == {"save_energy": "off"}
+    state = hass.states.get(FH_ENTITY)
+    assert state is not None
+    assert state.state == HVACMode.HEAT
+    assert state.attributes[ATTR_TEMPERATURE] == 17.0
+
+
+async def test_floor_heater_turn_off(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """turn_off sends the power-off button."""
+    mock_client.set_floor_heater_settings.return_value = _floor_heater_response(
+        appliances, button="power-off"
+    )
+    await hass.services.async_call(
+        CLIMATE_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: FH_ENTITY}, blocking=True
+    )
+    assert mock_client.set_floor_heater_settings.call_args.kwargs["button"] == (
+        "power-off"
+    )
+    state = hass.states.get(FH_ENTITY)
+    assert state is not None
+    assert state.state == HVACMode.OFF
+
+
+async def test_floor_heater_set_temperature_in_heat_mode(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """In warm mode, set_temperature sends the absolute value."""
+    mock_client.set_floor_heater_settings.return_value = _floor_heater_response(
+        appliances, mode="warm", temperature="17", button=""
+    )
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_HVAC_MODE,
+        {ATTR_ENTITY_ID: FH_ENTITY, ATTR_HVAC_MODE: HVACMode.HEAT},
+        blocking=True,
+    )
+    mock_client.set_floor_heater_settings.return_value = _floor_heater_response(
+        appliances, mode="warm", temperature="25", button=""
+    )
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_TEMPERATURE,
+        {ATTR_ENTITY_ID: FH_ENTITY, ATTR_TEMPERATURE: 25},
+        blocking=True,
+    )
+    kwargs = mock_client.set_floor_heater_settings.call_args.kwargs
+    assert kwargs["operation_mode"] == "warm"
+    assert kwargs["temperature"] == "25"
+    state = hass.states.get(FH_ENTITY)
+    assert state is not None
+    assert state.state == HVACMode.HEAT
+    assert state.attributes[ATTR_TEMPERATURE] == 25.0
+
+
+async def test_floor_heater_set_temperature_rejected_in_relative_mode(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
+) -> None:
+    """In auto (relative offsets), HA rejects set_temperature before the entity.
+
+    No target temperature is advertised there — the -2..2 offsets clash with
+    the absolute 17-30 bounds — so core raises instead of the entity
+    mangling an accepted absolute value into the nearest offset.
+    """
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_TEMPERATURE,
+            {ATTR_ENTITY_ID: FH_ENTITY, ATTR_TEMPERATURE: 20},
+            blocking=True,
+        )
+    mock_client.set_floor_heater_settings.assert_not_called()
+
+
+async def test_floor_heater_mode_change_refreshes_extras_availability(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """The full-Appliance write response updates extras availability at once.
+
+    floor_heater_settings echoes the whole appliance, so a mode change that
+    hides an extra must flip its switch to unavailable immediately — no
+    poll, no extra refresh request.
+    """
+    response = _floor_heater_response(
+        appliances, mode="warm", temperature="17", button=""
+    )
+    assert response.floor_heater is not None
+    response = replace(
+        response,
+        floor_heater=replace(
+            response.floor_heater,
+            extras=[
+                replace(extra, availability="hidden")
+                for extra in response.floor_heater.extras
+            ],
+        ),
+    )
+    mock_client.set_floor_heater_settings.return_value = response
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_HVAC_MODE,
+        {ATTR_ENTITY_ID: FH_ENTITY, ATTR_HVAC_MODE: HVACMode.HEAT},
+        blocking=True,
+    )
+    switch_state = hass.states.get("switch.floor_heater_save_energy")
+    assert switch_state is not None
+    assert switch_state.state == STATE_UNAVAILABLE
