@@ -276,7 +276,7 @@ EXTRA_ON_OFF = frozenset({"on", "off"})
 
 
 def extras_catalog(appliance: Appliance) -> list[AirconExtra]:
-    """The appliance's extras catalog: aircon for ACs, floor_heater for FHs."""
+    """Return the appliance's extras catalog: aircon for ACs, floor_heater for FHs."""
     if appliance.type == APPLIANCE_TYPE_FLOOR_HEATER:
         return appliance.floor_heater.extras if appliance.floor_heater else []
     if appliance.type == APPLIANCE_TYPE_AC:
@@ -285,7 +285,7 @@ def extras_catalog(appliance: Appliance) -> list[AirconExtra]:
 
 
 def extra_platform(extra: AirconExtra) -> Platform | None:
-    """The platform owning this extra, or None when nothing can render it.
+    """Return the platform owning this extra, or None when nothing can render it.
 
     The single classification shared by the three extras platforms: a
     binary on/off "choice" is a switch, any other choice offering options

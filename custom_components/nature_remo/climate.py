@@ -62,7 +62,7 @@ def _parse_float(value: str) -> float | None:
 
 
 def _is_relative_temperature_list(values: list[str]) -> bool:
-    """True when a mode's temp list holds relative offsets, not setpoints."""
+    """Return True when a mode's temp list holds relative offsets, not setpoints."""
     for value in values:
         if value.startswith(("+", "-")):
             return True

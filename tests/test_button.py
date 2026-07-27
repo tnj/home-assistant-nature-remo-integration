@@ -145,6 +145,39 @@ async def test_light_button_failure_raises(
         )
 
 
+@pytest.mark.parametrize(
+    ("unique_id", "client_method", "nickname"),
+    [
+        ("appliance-tv-1_button_vol-up", "send_tv_button", "Living TV"),
+        ("appliance-projector-1_button_io", "send_light_projector_button", "Projector"),
+        ("appliance-ac-1_button_airdir-swing", "set_aircon_settings", "Living AC"),
+    ],
+)
+async def test_button_press_failure_raises(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    unique_id: str,
+    client_method: str,
+    nickname: str,
+) -> None:
+    """Every button flavour converts an API error into HomeAssistantError.
+
+    TV buttons, light projector buttons and AC fixed buttons each call a
+    different endpoint, so each needs its own conversion — an unconverted
+    NatureRemoError would surface to the user as an unknown crash.
+    """
+    entity_registry = er.async_get(hass)
+    entity_id = entity_registry.async_get_entity_id(BUTTON_DOMAIN, DOMAIN, unique_id)
+    assert entity_id is not None
+    getattr(mock_client, client_method).side_effect = NatureRemoConnectionError("boom")
+
+    with pytest.raises(HomeAssistantError, match=f"Failed to control {nickname}"):
+        await hass.services.async_call(
+            BUTTON_DOMAIN, SERVICE_PRESS, {ATTR_ENTITY_ID: entity_id}, blocking=True
+        )
+
+
 async def test_tv_shortcut_buttons(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
 ) -> None:

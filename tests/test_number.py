@@ -4,7 +4,7 @@ from dataclasses import replace
 from unittest.mock import AsyncMock
 
 import pytest
-from aionatureremo import Device
+from aionatureremo import Device, NatureRemoConnectionError
 from homeassistant.components.number import (
     ATTR_VALUE,
     SERVICE_SET_VALUE,
@@ -14,7 +14,7 @@ from homeassistant.components.number import (
 )
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 
@@ -79,6 +79,28 @@ async def test_set_temperature_offset_rejects_fractional_value(
             blocking=True,
         )
     mock_client.set_temperature_offset.assert_not_called()
+
+
+async def test_set_temperature_offset_failure_raises(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+) -> None:
+    """A failed offset write surfaces as HomeAssistantError, keeping the value."""
+    mock_client.set_temperature_offset.side_effect = NatureRemoConnectionError("boom")
+    with pytest.raises(HomeAssistantError, match="Failed to update the offset"):
+        await hass.services.async_call(
+            NUMBER_DOMAIN,
+            SERVICE_SET_VALUE,
+            {
+                ATTR_ENTITY_ID: "number.living_remo_temperature_offset",
+                ATTR_VALUE: 2,
+            },
+            blocking=True,
+        )
+    state = hass.states.get("number.living_remo_temperature_offset")
+    assert state is not None
+    assert state.state == "0.0"  # unchanged; the Remo never stored the offset
 
 
 async def test_set_temperature_offset_accepts_integral_float(

@@ -64,6 +64,11 @@ installed automatically from the manifest.
   integration alongside another Nature Remo integration (or heavy app use)
   on the same account causes intermittent rate-limit unavailability. Use
   one integration per account.
+- Devices, appliances, and their entities (learned signals, TV/light
+  buttons, extras) follow the Nature account automatically: new ones appear
+  without a restart, and ones deleted in the Nature app are removed from
+  the entity registry after about 3 poll cycles (roughly 3 minutes) instead
+  of lingering as unavailable orphans.
 
 ## Development
 

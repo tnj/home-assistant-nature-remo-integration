@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from aionatureremo import AirconSettings, Appliance, Device, NatureRemoRateLimitError
+from aionatureremo import Appliance, Device, NatureRemoRateLimitError
 from homeassistant.components.climate import (
     ATTR_CURRENT_HUMIDITY,
     ATTR_CURRENT_TEMPERATURE,
@@ -47,8 +47,10 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.nature_remo.climate import (
     NatureRemoClimate,
     _coerce_to_allowed,
+    _is_relative_temperature_list,
 )
 from custom_components.nature_remo.coordinator import NatureRemoData
+from tests.conftest import aircon_settings
 
 ENTITY = "climate.living_ac"
 FH_ENTITY = "climate.floor_heater"
@@ -68,28 +70,10 @@ def _ac_entity(
     return NatureRemoClimate(coordinator, "appliance-ac-1")  # type: ignore[arg-type]
 
 
-def _settings(**overrides: str | None) -> AirconSettings:
-    """Build an AirconSettings for mock command responses."""
-    values: dict[str, str | dict[str, str] | None] = {
-        "temperature": "26",
-        "temperature_unit": "c",
-        "mode": "cool",
-        "volume": "auto",
-        "direction": "swing",
-        "direction_h": "",
-        "button": "",
-        "updated_at": None,
-        # The real API echoes remote-side extra state in every response.
-        "extra": {"autoclean": "on"},
-    }
-    values.update(overrides)
-    return AirconSettings(**values)  # type: ignore[arg-type]
-
-
 def _ac_settings_replaced(
     appliances: list[Appliance], **overrides: str
 ) -> list[Appliance]:
-    """The fixture appliances with the living-room AC's settings overridden."""
+    """Return the fixture appliances with the living-room AC's settings overridden."""
     return [
         replace(appliance, settings=replace(appliance.settings, **overrides))
         if appliance.id == "appliance-ac-1"
@@ -151,7 +135,7 @@ async def test_climate_off_state_from_api(
     mock_client: AsyncMock,
     appliances: list[Appliance],
 ) -> None:
-    """button == power-off reports HVACMode.OFF."""
+    """Button == power-off reports HVACMode.OFF."""
     await _setup_with_ac_settings(
         hass, mock_config_entry, mock_client, appliances, button="power-off"
     )
@@ -165,7 +149,7 @@ async def test_climate_turn_off_and_on(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
 ) -> None:
     """turn_off sends the full settings plus power-off; turn_on restores."""
-    mock_client.set_aircon_settings.return_value = _settings(button="power-off")
+    mock_client.set_aircon_settings.return_value = aircon_settings(button="power-off")
     await hass.services.async_call(
         CLIMATE_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: ENTITY}, blocking=True
     )
@@ -180,7 +164,7 @@ async def test_climate_turn_off_and_on(
     assert state is not None
     assert state.state == HVACMode.OFF  # optimistic update from the response
 
-    mock_client.set_aircon_settings.return_value = _settings()
+    mock_client.set_aircon_settings.return_value = aircon_settings()
     await hass.services.async_call(
         CLIMATE_DOMAIN, SERVICE_TURN_ON, {ATTR_ENTITY_ID: ENTITY}, blocking=True
     )
@@ -194,7 +178,7 @@ async def test_climate_set_temperature(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
 ) -> None:
     """set_temperature snaps the value into the mode's allowed list."""
-    mock_client.set_aircon_settings.return_value = _settings(temperature="27")
+    mock_client.set_aircon_settings.return_value = aircon_settings(temperature="27")
     await hass.services.async_call(
         CLIMATE_DOMAIN,
         SERVICE_SET_TEMPERATURE,
@@ -211,7 +195,7 @@ async def test_climate_set_temperature_with_mode(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
 ) -> None:
     """set_temperature with hvac_mode switches mode in the same command."""
-    mock_client.set_aircon_settings.return_value = _settings(
+    mock_client.set_aircon_settings.return_value = aircon_settings(
         mode="warm", temperature="20"
     )
     await hass.services.async_call(
@@ -232,7 +216,7 @@ async def test_climate_set_hvac_mode_coerces_settings(
     appliances: list[Appliance],
 ) -> None:
     """cool(26)→warm snaps the temperature into warm's 18-22 range."""
-    mock_client.set_aircon_settings.return_value = _settings(
+    mock_client.set_aircon_settings.return_value = aircon_settings(
         mode="warm", temperature="22"
     )
     # A mode change triggers a coordinator refresh (extras availability is
@@ -265,7 +249,7 @@ async def test_climate_set_fan_and_swing_modes(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
 ) -> None:
     """Fan, vertical swing and horizontal swing map to vol/dir/dirh."""
-    mock_client.set_aircon_settings.return_value = _settings(volume="2")
+    mock_client.set_aircon_settings.return_value = aircon_settings(volume="2")
     await hass.services.async_call(
         CLIMATE_DOMAIN,
         SERVICE_SET_FAN_MODE,
@@ -274,7 +258,7 @@ async def test_climate_set_fan_and_swing_modes(
     )
     assert mock_client.set_aircon_settings.call_args.kwargs["air_volume"] == "2"
 
-    mock_client.set_aircon_settings.return_value = _settings(direction="1")
+    mock_client.set_aircon_settings.return_value = aircon_settings(direction="1")
     await hass.services.async_call(
         CLIMATE_DOMAIN,
         SERVICE_SET_SWING_MODE,
@@ -283,7 +267,7 @@ async def test_climate_set_fan_and_swing_modes(
     )
     assert mock_client.set_aircon_settings.call_args.kwargs["air_direction"] == "1"
 
-    mock_client.set_aircon_settings.return_value = _settings(direction_h="2")
+    mock_client.set_aircon_settings.return_value = aircon_settings(direction_h="2")
     await hass.services.async_call(
         CLIMATE_DOMAIN,
         SERVICE_SET_SWING_HORIZONTAL_MODE,
@@ -311,7 +295,7 @@ async def test_climate_set_hvac_mode_off(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
 ) -> None:
     """set_hvac_mode OFF sends the power-off button."""
-    mock_client.set_aircon_settings.return_value = _settings(button="power-off")
+    mock_client.set_aircon_settings.return_value = aircon_settings(button="power-off")
     await hass.services.async_call(
         CLIMATE_DOMAIN,
         SERVICE_SET_HVAC_MODE,
@@ -328,7 +312,7 @@ async def test_climate_set_temperature_off(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
 ) -> None:
     """set_temperature with hvac_mode OFF powers off instead of setting temp."""
-    mock_client.set_aircon_settings.return_value = _settings(button="power-off")
+    mock_client.set_aircon_settings.return_value = aircon_settings(button="power-off")
     await hass.services.async_call(
         CLIMATE_DOMAIN,
         SERVICE_SET_TEMPERATURE,
@@ -356,7 +340,7 @@ async def test_climate_set_temperature_while_off_stays_off(
         hass, mock_config_entry, mock_client, appliances, button="power-off"
     )
 
-    mock_client.set_aircon_settings.return_value = _settings(
+    mock_client.set_aircon_settings.return_value = aircon_settings(
         temperature="27", button="power-off"
     )
     await hass.services.async_call(
@@ -384,7 +368,7 @@ async def test_climate_set_fan_mode_while_off_stays_off(
         hass, mock_config_entry, mock_client, appliances, button="power-off"
     )
 
-    mock_client.set_aircon_settings.return_value = _settings(
+    mock_client.set_aircon_settings.return_value = aircon_settings(
         volume="2", button="power-off"
     )
     await hass.services.async_call(
@@ -409,7 +393,7 @@ async def test_climate_turn_on_while_off_sends_power_on(
         hass, mock_config_entry, mock_client, appliances, button="power-off"
     )
 
-    mock_client.set_aircon_settings.return_value = _settings()
+    mock_client.set_aircon_settings.return_value = aircon_settings()
     await hass.services.async_call(
         CLIMATE_DOMAIN, SERVICE_TURN_ON, {ATTR_ENTITY_ID: ENTITY}, blocking=True
     )
@@ -434,7 +418,7 @@ async def test_climate_mode_change_omits_unparseable_temperature(
         hass, mock_config_entry, mock_client, appliances, temperature=""
     )
 
-    mock_client.set_aircon_settings.return_value = _settings(
+    mock_client.set_aircon_settings.return_value = aircon_settings(
         mode="warm", temperature="20"
     )
     await hass.services.async_call(
@@ -479,6 +463,32 @@ def test_coerce_to_allowed_skips_unparseable() -> None:
     # own remembered value instead of the entity inventing one.
     assert _coerce_to_allowed("30", ["low", "high"]) is None
     assert _coerce_to_allowed("", ["26", "28"]) is None
+
+
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [
+        # No prefix anywhere: only the "<= 0" rule can classify these. Real
+        # ACs send relative lists unsigned, and no setpoint sits at or below
+        # zero in either Celsius or Fahrenheit.
+        (["0", "1", "2"], True),
+        (["1", "2", "0"], True),
+        # Signed lists are caught by the prefix rule before any parsing.
+        (["-5", "-4", "-3"], True),
+        (["+1", "+2", "+3"], True),
+        # Absolute setpoint lists: neither rule fires.
+        (["18", "19", "20"], False),
+        (["24", "25", "26", "27", "28"], False),
+        (["66.2", "68"], False),  # Fahrenheit setpoints stay absolute
+        # Nothing to classify: an empty or wholly unparseable list is not
+        # relative (supported_features then falls back to the emptiness check).
+        ([], False),
+        (["low", "high"], False),
+    ],
+)
+def test_is_relative_temperature_list(values: list[str], expected: bool) -> None:
+    """Relative lists are detected by a '+'/'-' prefix OR a value <= 0."""
+    assert _is_relative_temperature_list(values) is expected
 
 
 def test_climate_missing_settings(
@@ -600,7 +610,7 @@ async def test_climate_preserves_extra_state(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
 ) -> None:
     """Remote-side extra state (autoclean) is sent back on every command."""
-    mock_client.set_aircon_settings.return_value = _settings(button="power-off")
+    mock_client.set_aircon_settings.return_value = aircon_settings(button="power-off")
     await hass.services.async_call(
         CLIMATE_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: ENTITY}, blocking=True
     )
@@ -626,7 +636,7 @@ async def test_climate_without_extra_sends_none(
     await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()
 
-    mock_client.set_aircon_settings.return_value = _settings(extra={})
+    mock_client.set_aircon_settings.return_value = aircon_settings(extra={})
     await hass.services.async_call(
         CLIMATE_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: ENTITY}, blocking=True
     )
@@ -634,7 +644,7 @@ async def test_climate_without_extra_sends_none(
 
 
 def _floor_heater_response(appliances: list[Appliance], **overrides: str) -> Appliance:
-    """A full updated Appliance, as floor_heater_settings responses carry."""
+    """Return a full updated Appliance, as floor_heater_settings responses carry."""
     floor_heater = next(a for a in appliances if a.id == FH_ID)
     assert floor_heater.settings is not None
     return replace(floor_heater, settings=replace(floor_heater.settings, **overrides))

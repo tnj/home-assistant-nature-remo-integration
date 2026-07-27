@@ -20,12 +20,12 @@ SPEED_ENTITY = "button.fan_speed"
 
 @pytest.fixture(autouse=True)
 def _grace_period_assumption() -> None:
-    """These tests spell out the grace period; keep them honest about it."""
+    """Assert the grace period constant matches what these tests assume."""
     assert STALE_POLLS_BEFORE_REMOVAL == 3
 
 
 def _without_speed_signal(appliances: list[Appliance]) -> list[Appliance]:
-    """The fixture account with the fan's "Speed" IR signal deleted."""
+    """Return the fixture account with the fan's "Speed" IR signal deleted."""
     return [
         replace(
             appliance,
@@ -38,7 +38,7 @@ def _without_speed_signal(appliances: list[Appliance]) -> list[Appliance]:
 
 
 def _speed_entity_id(hass: HomeAssistant) -> str | None:
-    """The registry entity_id of the fan's "Speed" button, if it still exists."""
+    """Return the registry entity_id of the fan's "Speed" button, if it still exists."""
     return er.async_get(hass).async_get_entity_id(
         BUTTON_DOMAIN, DOMAIN, SPEED_UNIQUE_ID
     )

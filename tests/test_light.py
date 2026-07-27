@@ -2,7 +2,8 @@
 
 from unittest.mock import AsyncMock
 
-from aionatureremo import Appliance, LightState
+import pytest
+from aionatureremo import Appliance, LightState, NatureRemoConnectionError
 from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
 from homeassistant.const import (
     ATTR_ASSUMED_STATE,
@@ -13,6 +14,7 @@ from homeassistant.const import (
     STATE_ON,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from tests.conftest import load_json_fixture
@@ -50,6 +52,28 @@ async def test_light_state_and_turn_off(
     state = hass.states.get(ENTITY)
     assert state is not None
     assert state.state == STATE_ON
+
+
+@pytest.mark.parametrize("service", [SERVICE_TURN_ON, SERVICE_TURN_OFF])
+async def test_light_command_failure_raises(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    service: str,
+) -> None:
+    """Both light commands convert an API error into HomeAssistantError.
+
+    The optimistic state update must not run either: the light keeps the
+    power state the API last reported.
+    """
+    mock_client.send_light_button.side_effect = NatureRemoConnectionError("boom")
+    with pytest.raises(HomeAssistantError, match="Failed to control Bedroom Light"):
+        await hass.services.async_call(
+            LIGHT_DOMAIN, service, {ATTR_ENTITY_ID: ENTITY}, blocking=True
+        )
+    state = hass.states.get(ENTITY)
+    assert state is not None
+    assert state.state == STATE_ON  # unchanged; nothing reached the remote
 
 
 async def test_light_toggle_only_model_is_assumed_state(

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 
 import homeassistant.util.dt as dt_util
 import pytest
-from aionatureremo import AirconSettings, Appliance
+from aionatureremo import Appliance, NatureRemoConnectionError
 from homeassistant.components.select import (
     ATTR_OPTION,
     ATTR_OPTIONS,
@@ -30,34 +30,12 @@ from pytest_homeassistant_custom_component.common import (
 )
 
 from custom_components.nature_remo.const import DOMAIN
+from tests.conftest import bedroom_aircon_settings, with_extra_availability
 
 ENTITY = "select.bedroom_ac_humidify"
 DEHUMID_ENTITY = "select.bedroom_ac_dehumidify"
 
 HUMID_OPTIONS = ["off", "40%", "45%", "50%", "continuous", "beauty"]
-
-
-def _with_extra_availability(
-    appliances: list[Appliance], appliance_id: str, availability: dict[str, str]
-) -> list[Appliance]:
-    """Rebuild the appliance list with selected extras' availability changed."""
-    modified = []
-    for appliance in appliances:
-        if appliance.id == appliance_id and appliance.aircon is not None:
-            aircon = replace(
-                appliance.aircon,
-                extras=[
-                    replace(
-                        extra,
-                        availability=availability.get(extra.id, extra.availability),
-                    )
-                    for extra in appliance.aircon.extras
-                ],
-            )
-            modified.append(replace(appliance, aircon=aircon))
-        else:
-            modified.append(appliance)
-    return modified
 
 
 async def test_extra_select_state(
@@ -130,16 +108,8 @@ async def test_extra_select_option_preserves_power(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
 ) -> None:
     """Selecting sends only the power button + merged extras."""
-    mock_client.set_aircon_settings.return_value = AirconSettings(
-        temperature="22",
-        temperature_unit="c",
-        mode="warm",
-        volume="auto",
-        direction="auto",
-        direction_h="auto",
-        button="",
-        updated_at=None,
-        extra={"powerful": "off", "humid": "50%"},
+    mock_client.set_aircon_settings.return_value = bedroom_aircon_settings(
+        extra={"powerful": "off", "humid": "50%"}
     )
     await hass.services.async_call(
         SELECT_DOMAIN,
@@ -165,16 +135,8 @@ async def test_extra_select_ignored_write_raises(
     (probe-verified), so a missing echo is a silent server-side no-op. The
     entity applies server truth first (state stays unknown), then raises.
     """
-    mock_client.set_aircon_settings.return_value = AirconSettings(
-        temperature="22",
-        temperature_unit="c",
-        mode="warm",
-        volume="auto",
-        direction="auto",
-        direction_h="auto",
-        button="",
-        updated_at=None,
-        extra={"powerful": "off"},
+    mock_client.set_aircon_settings.return_value = bedroom_aircon_settings(
+        extra={"powerful": "off"}
     )
     with pytest.raises(HomeAssistantError, match="ignored the write"):
         await hass.services.async_call(
@@ -188,6 +150,23 @@ async def test_extra_select_ignored_write_raises(
     assert state.state == STATE_UNKNOWN  # server truth applied before the raise
 
 
+async def test_extra_select_communication_failure_raises(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
+) -> None:
+    """A failed select write surfaces as HomeAssistantError, leaving state be."""
+    mock_client.set_aircon_settings.side_effect = NatureRemoConnectionError("boom")
+    with pytest.raises(HomeAssistantError, match="Failed to update Bedroom AC"):
+        await hass.services.async_call(
+            SELECT_DOMAIN,
+            SERVICE_SELECT_OPTION,
+            {ATTR_ENTITY_ID: ENTITY, ATTR_OPTION: "50%"},
+            blocking=True,
+        )
+    state = hass.states.get(ENTITY)
+    assert state is not None
+    assert state.state == STATE_UNKNOWN  # nothing reached the remote
+
+
 async def test_extra_select_tracks_availability_flip(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
@@ -198,7 +177,7 @@ async def test_extra_select_tracks_availability_flip(
     assert hass.states.get(ENTITY).state == STATE_UNKNOWN
     assert hass.states.get(DEHUMID_ENTITY).state == STATE_UNAVAILABLE
 
-    mock_client.get_appliances.return_value = _with_extra_availability(
+    mock_client.get_appliances.return_value = with_extra_availability(
         appliances,
         "appliance-ac-2",
         {"humid": "hidden", "dehumid": "available"},

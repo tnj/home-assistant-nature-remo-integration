@@ -52,6 +52,16 @@ reviewer-facing rationale for Home Assistant core submission lives in
   entities of its own) and a nickname edited in the Nature app propagates.
 - `PARALLEL_UPDATES = 0` in `sensor.py` (read-only); `= 1` in every command
   platform (serializes writes; protects the rate budget and IR emission).
+- **Device and appliance availability.** `NatureRemoDeviceEntity.available`
+  is `False` once the hub's `online` field is explicitly `False`; `None`
+  (older firmware that never reports the field at all — everything except
+  Nature-2W3, Remo 2.x, and Remo-E-lite) keeps the entity available, since
+  the absence of a signal is not itself a signal. `NatureRemoApplianceEntity`/
+  `NatureRemoDeviceEntity` fall back to
+  the last snapshot seen when their id briefly drops out of a poll (a
+  truncated response, or the grace window before registry removal above),
+  so an in-flight service call or state read never raises a bare `KeyError`
+  — `available` is what reports the id as gone, not an exception.
 
 ## Entity map
 
@@ -78,12 +88,27 @@ reviewer-facing rationale for Home Assistant core submission lives in
   Power-off is **not a mode**: `settings.button == "power-off"` means OFF
   while `settings.mode` keeps the last active mode; turn-on sends
   `button=""`.
+- **A settings write preserves the current power state by default.** Every
+  send goes through `_async_send(button=...)`, and `button` defaults to
+  `None` → the appliance's own `settings.button`; only an explicit mode
+  selection (`set_hvac_mode`, or `set_temperature` with a mode) or
+  `turn_on`/`turn_off` passes the power button explicitly. Before this, any
+  temperature/fan/swing change implicitly powered a powered-off unit back
+  on. Preserving the button on a write that omits it is probe-verified for
+  extras writes (`set_aircon_settings`/`set_floor_heater_settings` called
+  from `entity.py`); the climate entity relies on the same field being
+  honored on a **full** settings write, which is not yet confirmed against
+  real hardware — see "Verification pending before release" below.
 - `min_temp` / `max_temp` / `target_temperature_step` come from the **union
   of absolute per-mode temperature lists**, because HA validates
   `set_temperature` against entity-level bounds before mode switches.
   Per-mode enforcement happens at send time by snapping to that mode's
-  allowed list. Relative lists (auto, sometimes dry — values with `+`/`-`
-  prefixes or ≤ 0) are excluded from the union.
+  allowed list; a stored value that cannot be snapped to anything in the
+  list (unparseable, or a list with no numeric entries) omits the field
+  entirely rather than inventing one — the cloud restores its own
+  remembered per-mode value when a field is left out (probe-verified).
+  Relative lists (auto, sometimes dry — values with `+`/`-` prefixes or
+  ≤ 0) are excluded from the union.
 - **Relative-offset modes advertise no target temperature**: the feature
   flag is dropped and the attribute is `None` while the current mode's list
   is relative, because HA validates `set_temperature` against the absolute
@@ -98,8 +123,14 @@ reviewer-facing rationale for Home Assistant core submission lives in
   passes the stored `extra` back on every settings send — dropping it would
   silently clear the state on the physical remote. Binary catalog entries
   (`range.extras` with on/off choices) are exposed as CONFIG-category
-  switches; writes send only `button=<current power state>` plus the new
-  extra so nothing else changes.
+  switches; an extras write sends the **full current extras dict merged
+  with the new value** plus the current power button, since any extra
+  omitted from a write is cleared server-side — never just the one changed
+  key. Because both the climate entity and the extras entities can write the
+  same appliance's settings, `coordinator.async_write_lock(appliance_id)`
+  serializes all of them: a write reads the appliance only after acquiring
+  the lock, so it always merges on top of whatever the previous writer just
+  landed instead of racing it and silently reverting the change.
 - **Extra availability is dynamic.** The catalog itself (ids, options,
   descriptions) is static; only each entry's `availability` changes
   (probe-verified on Daikin arc472a82). It is three-valued: `"available"`,
@@ -222,3 +253,29 @@ refresh/set, Local API, OAuth2 (business-only).
   (e.g. `["-5",…,"5"]`); detection treats `+`/`-` prefixes or values ≤ 0 as
   relative. Unsupported `dirh` arrives as `[""]` and empty strings are
   stripped.
+
+## Verification pending before release
+
+Per the mandatory release order in `CLAUDE.md` (implement → code review →
+live verification → release), these two behaviors are implemented and
+unit-tested but not yet confirmed against real hardware:
+
+- **Full climate settings write with `button="power-off"`.** A
+  temperature/fan/swing change on a powered-off unit now sends the stored
+  power button back unchanged instead of defaulting to power-on (see
+  Climate above). The button-preservation behavior is probe-verified for
+  extras writes (`set_aircon_settings`/`set_floor_heater_settings` called
+  from the switch/select/time entities); the climate entity's **full**
+  settings write has not been probed the same way. Needs a live check that
+  the unit stays off and that sending `button=power-off` alongside a
+  temperature/mode payload causes no unwanted IR emission.
+- **Entity/device removal grace against the real API.** The 3-poll grace in
+  `entity.async_manage_platform_entities` (and the equivalent in
+  `_async_stale_device_remover`) is unit-tested against synthetic missing
+  ids, not against real API flakiness. Some enumerations this integration
+  treats as removal-worthy absence are value-gated rather than presence-gated
+  (e.g. smart-meter/number entities keyed on whether a particular EPC or
+  event shows up in that poll's payload) — a transient EPC/event dropout on
+  real hardware could look identical to genuine removal and needs to be
+  watched for during live verification before this is trusted to not evict
+  live entities.

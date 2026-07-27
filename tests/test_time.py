@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 
 import homeassistant.util.dt as dt_util
 import pytest
-from aionatureremo import AirconSettings, Appliance
+from aionatureremo import Appliance, NatureRemoConnectionError
 from homeassistant.components.time import ATTR_TIME, SERVICE_SET_VALUE
 from homeassistant.components.time import DOMAIN as TIME_DOMAIN
 from homeassistant.const import (
@@ -24,31 +24,9 @@ from pytest_homeassistant_custom_component.common import (
 )
 
 from custom_components.nature_remo.const import DOMAIN
+from tests.conftest import bedroom_aircon_settings, with_extra_availability
 
 ENTITY = "time.bedroom_ac_night_set_mode"
-
-
-def _with_extra_availability(
-    appliances: list[Appliance], appliance_id: str, availability: dict[str, str]
-) -> list[Appliance]:
-    """Rebuild the appliance list with selected extras' availability changed."""
-    modified = []
-    for appliance in appliances:
-        if appliance.id == appliance_id and appliance.aircon is not None:
-            aircon = replace(
-                appliance.aircon,
-                extras=[
-                    replace(
-                        extra,
-                        availability=availability.get(extra.id, extra.availability),
-                    )
-                    for extra in appliance.aircon.extras
-                ],
-            )
-            modified.append(replace(appliance, aircon=aircon))
-        else:
-            modified.append(appliance)
-    return modified
 
 
 async def test_extra_time_state(
@@ -102,16 +80,8 @@ async def test_extra_time_set_value_preserves_power(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
 ) -> None:
     """Setting the time sends only the power button + merged extras as HH:MM."""
-    mock_client.set_aircon_settings.return_value = AirconSettings(
-        temperature="22",
-        temperature_unit="c",
-        mode="warm",
-        volume="auto",
-        direction="auto",
-        direction_h="auto",
-        button="",
-        updated_at=None,
-        extra={"powerful": "off", "new_sleep": "21:00"},
+    mock_client.set_aircon_settings.return_value = bedroom_aircon_settings(
+        extra={"powerful": "off", "new_sleep": "21:00"}
     )
     await hass.services.async_call(
         TIME_DOMAIN,
@@ -137,16 +107,8 @@ async def test_extra_time_ignored_write_raises(
     (probe-verified), so a missing echo is a silent server-side no-op. The
     entity applies server truth first (state stays unknown), then raises.
     """
-    mock_client.set_aircon_settings.return_value = AirconSettings(
-        temperature="22",
-        temperature_unit="c",
-        mode="warm",
-        volume="auto",
-        direction="auto",
-        direction_h="auto",
-        button="",
-        updated_at=None,
-        extra={"powerful": "off"},
+    mock_client.set_aircon_settings.return_value = bedroom_aircon_settings(
+        extra={"powerful": "off"}
     )
     with pytest.raises(HomeAssistantError, match="ignored the write"):
         await hass.services.async_call(
@@ -158,6 +120,23 @@ async def test_extra_time_ignored_write_raises(
     state = hass.states.get(ENTITY)
     assert state is not None
     assert state.state == STATE_UNKNOWN  # server truth applied before the raise
+
+
+async def test_extra_time_communication_failure_raises(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
+) -> None:
+    """A failed time write surfaces as HomeAssistantError, leaving state be."""
+    mock_client.set_aircon_settings.side_effect = NatureRemoConnectionError("boom")
+    with pytest.raises(HomeAssistantError, match="Failed to update Bedroom AC"):
+        await hass.services.async_call(
+            TIME_DOMAIN,
+            SERVICE_SET_VALUE,
+            {ATTR_ENTITY_ID: ENTITY, ATTR_TIME: time(21, 0)},
+            blocking=True,
+        )
+    state = hass.states.get(ENTITY)
+    assert state is not None
+    assert state.state == STATE_UNKNOWN  # nothing reached the remote
 
 
 async def test_extra_time_malformed_stored_value_is_unknown(
@@ -194,7 +173,7 @@ async def test_extra_time_tracks_availability_flip(
     """Time entities follow per-poll availability flips caused by mode changes."""
     assert hass.states.get(ENTITY).state == STATE_UNKNOWN
 
-    mock_client.get_appliances.return_value = _with_extra_availability(
+    mock_client.get_appliances.return_value = with_extra_availability(
         appliances, "appliance-ac-2", {"new_sleep": "hidden"}
     )
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=61))

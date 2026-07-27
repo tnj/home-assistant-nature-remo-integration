@@ -23,7 +23,7 @@ def coordinator(
     mock_config_entry: MockConfigEntry,
     mock_client: AsyncMock,
 ) -> NatureRemoCoordinator:
-    """A coordinator wired to the mocked client."""
+    """Build a coordinator wired to the mocked client."""
     mock_config_entry.add_to_hass(hass)
     return NatureRemoCoordinator(hass, mock_config_entry, mock_client)
 
