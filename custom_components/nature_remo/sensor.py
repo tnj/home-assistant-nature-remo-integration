@@ -174,12 +174,36 @@ async def async_setup_entry(
                 )
         return entities
 
+    def _retain(data: NatureRemoData, unique_id: str) -> bool:
+        """Keep a sensor whose parent is here but whose reading dropped out.
+
+        Membership above is value-gated: a device sensor needs its event in
+        this poll's payload and a smart-meter sensor needs its ECHONET
+        property (EPC 225 alone missing nils both cumulative sensors). A
+        transient dropout — hub reboot, meter pairing hiccup, cloud-side
+        omission — would otherwise look exactly like deletion and, after the
+        grace period, delete the registry entry along with the customizations
+        and energy-dashboard linkage attached to it. Only the hub or the
+        appliance itself disappearing means the entity is really gone.
+        """
+        return any(
+            unique_id == f"{device_id}_{description.key}"
+            for device_id in data.devices
+            for description in DEVICE_SENSORS
+        ) or any(
+            unique_id == f"{appliance_id}_{meter_description.key}"
+            for appliance_id, appliance in data.appliances.items()
+            if appliance.type == APPLIANCE_TYPE_SMART_METER
+            for meter_description in SMART_METER_SENSORS
+        )
+
     async_manage_platform_entities(
         hass,
         entry,
         async_add_entities,
         domain=Platform.SENSOR,
         build_entities=_build_entities,
+        retain=_retain,
     )
 
 

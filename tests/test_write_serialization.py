@@ -138,3 +138,98 @@ async def test_extras_write_waits_for_the_in_flight_climate_write(
     time_state = hass.states.get(TIME_ENTITY)
     assert time_state is not None
     assert time_state.state == "22:00:00"
+
+
+async def test_climate_write_waits_for_the_in_flight_extras_write(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
+) -> None:
+    """The mirror direction: climate queued behind an extras write.
+
+    The test above always has climate acquire the lock first, which leaves
+    climate's own read placement unpinned — hoisting it out of the lock keeps
+    that test green. Here the switch writes first and its response reveals a
+    sleep timer; the climate write queued behind it must build its payload
+    (settings.extra above all) from that response, or it would silently
+    revert the switch's write and wipe the revealed extra along with it.
+    """
+    coordinator = init_integration.runtime_data
+    lock = coordinator.async_write_lock(APPLIANCE_ID)
+    original_acquire = lock.acquire
+    queued_behind_switch = asyncio.Event()
+
+    async def _tracking_acquire() -> bool:
+        if lock.locked():
+            queued_behind_switch.set()
+        return await original_acquire()
+
+    lock.acquire = _tracking_acquire  # type: ignore[method-assign]
+
+    switch_write_started = asyncio.Event()
+    release_switch_write = asyncio.Event()
+    switch_response = bedroom_aircon_settings(
+        button="", extra={"powerful": "on", "new_sleep": "22:00"}
+    )
+    climate_response = bedroom_aircon_settings(
+        button="power-off", extra={"powerful": "on", "new_sleep": "22:00"}
+    )
+
+    async def _blocking_first_write(
+        appliance_id: str, **kwargs: object
+    ) -> AirconSettings:
+        if mock_client.set_aircon_settings.call_count == 1:
+            switch_write_started.set()
+            await release_switch_write.wait()
+            return switch_response
+        return climate_response
+
+    mock_client.set_aircon_settings.side_effect = _blocking_first_write
+
+    switch_task = hass.async_create_task(
+        hass.services.async_call(
+            SWITCH_DOMAIN,
+            SERVICE_TURN_ON,
+            {ATTR_ENTITY_ID: SWITCH_ENTITY},
+            blocking=True,
+        )
+    )
+    climate_task = None
+    try:
+        await _wait(switch_write_started)
+        climate_task = hass.async_create_task(
+            hass.services.async_call(
+                CLIMATE_DOMAIN,
+                SERVICE_TURN_OFF,
+                {ATTR_ENTITY_ID: CLIMATE_ENTITY},
+                blocking=True,
+            )
+        )
+        await _wait(queued_behind_switch)
+        assert mock_client.set_aircon_settings.call_count == 1
+        assert not climate_task.done()
+    finally:
+        release_switch_write.set()
+
+    await switch_task
+    assert climate_task is not None
+    await climate_task
+    await hass.async_block_till_done()
+
+    assert mock_client.set_aircon_settings.call_count == 2
+    switch_call, climate_call = mock_client.set_aircon_settings.call_args_list
+    # The switch write saw only what the last poll reported (new_sleep is in
+    # its response, not in its request).
+    assert switch_call == call(APPLIANCE_ID, button="", extra={"powerful": "on"})
+    # The climate write saw the switch's response: the extra it turned on and
+    # the sleep timer that response revealed, both passed back untouched.
+    assert climate_call.kwargs["button"] == "power-off"
+    assert climate_call.kwargs["extra"] == {"powerful": "on", "new_sleep": "22:00"}
+
+    switch_state = hass.states.get(SWITCH_ENTITY)
+    assert switch_state is not None
+    assert switch_state.state == STATE_ON
+    climate_state = hass.states.get(CLIMATE_ENTITY)
+    assert climate_state is not None
+    assert climate_state.state == HVACMode.OFF
+    time_state = hass.states.get(TIME_ENTITY)
+    assert time_state is not None
+    assert time_state.state == "22:00:00"

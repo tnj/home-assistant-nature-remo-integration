@@ -94,12 +94,27 @@ async def async_setup_entry(
             if description.event_key in device.events
         }
 
+    def _retain(data: NatureRemoData, unique_id: str) -> bool:
+        """Keep an offset whose Remo is here but whose event dropped out.
+
+        Membership above is value-gated on the measurement showing up in this
+        poll's payload; the offset itself lives on the Remo and survives a
+        missing reading. Only the hub disappearing removes the entity, so a
+        transient dropout cannot delete the registry entry.
+        """
+        return any(
+            unique_id == f"{device_id}_{description.key}"
+            for device_id in data.devices
+            for description in NUMBERS
+        )
+
     async_manage_platform_entities(
         hass,
         entry,
         async_add_entities,
         domain=Platform.NUMBER,
         build_entities=_build_entities,
+        retain=_retain,
     )
 
 

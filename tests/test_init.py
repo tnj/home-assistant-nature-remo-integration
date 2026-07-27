@@ -1,10 +1,12 @@
 """Tests for Nature Remo integration setup."""
 
+import logging
 from dataclasses import replace
 from datetime import timedelta
 from unittest.mock import AsyncMock
 
 import homeassistant.util.dt as dt_util
+import pytest
 from aionatureremo import Appliance, NatureRemoAuthError, NatureRemoConnectionError
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
@@ -139,14 +141,17 @@ async def test_stale_device_is_removed_after_the_grace_period(
     init_integration: MockConfigEntry,
     mock_client: AsyncMock,
     appliances: list[Appliance],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """A vanished appliance is removed, but not on the strength of one poll.
 
     Removing a device takes its entities, its area and every automation
     referencing them along, so a single truncated response must not be able
-    to trigger it.
+    to trigger it — and when it does happen it must be logged, since nothing
+    else records that the device ever existed.
     """
     assert STALE_POLLS_BEFORE_REMOVAL == 3
+    caplog.set_level(logging.INFO, logger="custom_components.nature_remo")
     device_registry = dr.async_get(hass)
     assert (
         device_registry.async_get_device(identifiers={(DOMAIN, "appliance-ir-1")})
@@ -167,6 +172,8 @@ async def test_stale_device_is_removed_after_the_grace_period(
         device_registry.async_get_device(identifiers={(DOMAIN, "appliance-ir-1")})
         is None
     )
+    assert "Removing device Fan (appliance-ir-1)" in caplog.text
+    assert "3 consecutive polls" in caplog.text
 
 
 async def test_stale_device_returning_resets_the_grace_period(

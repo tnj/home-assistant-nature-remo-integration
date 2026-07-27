@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
+import logging
+
 from aionatureremo import NatureRemoClient
 from homeassistant.const import CONF_API_TOKEN, Platform
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import DOMAIN
+from .const import DOMAIN, STALE_POLLS_BEFORE_REMOVAL
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
 from .entity import (
     StaleIdTracker,
     build_appliance_device_info,
     build_remo_device_info,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [
     Platform.BUTTON,
@@ -90,6 +94,16 @@ def _async_stale_device_remover(
             if identifiers & current_ids:
                 stale.async_seen(device_entry.id)
             elif stale.async_record_miss(device_entry.id):
+                # Log before removing: this takes the device's entities, area
+                # and automations with it, and nothing else records that it
+                # ever happened.
+                _LOGGER.info(
+                    "Removing device %s (%s): the Nature API has not reported it "
+                    "in %d consecutive polls",
+                    device_entry.name_by_user or device_entry.name,
+                    ", ".join(sorted(identifiers)),
+                    STALE_POLLS_BEFORE_REMOVAL,
+                )
                 device_registry.async_update_device(
                     device_entry.id, remove_config_entry_id=entry.entry_id
                 )

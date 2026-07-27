@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import replace
 
@@ -26,8 +27,11 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN, STALE_POLLS_BEFORE_REMOVAL
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator, NatureRemoData
 
+_LOGGER = logging.getLogger(__name__)
+
 type EntityFactory = Callable[[], Entity]
 type EntityBuilder = Callable[[NatureRemoData], dict[str, EntityFactory]]
+type RetainPredicate = Callable[[NatureRemoData, str], bool]
 
 
 class StaleIdTracker:
@@ -77,6 +81,7 @@ def async_manage_platform_entities(
     *,
     domain: Platform,
     build_entities: EntityBuilder,
+    retain: RetainPredicate | None = None,
 ) -> None:
     """Keep one platform's entities in sync with what the API reports.
 
@@ -87,6 +92,12 @@ def async_manage_platform_entities(
     the entity registry once their ids stay gone: an IR signal or a TV button
     deleted in the Nature app would otherwise leave an orphan that still
     looks available and errors on press.
+
+    Platforms whose membership is value-gated rather than presence-gated (a
+    sensor exists only while its reading is in the payload) pass ``retain``
+    to keep creation and removal apart: an id it accepts never counts as a
+    miss, so only the parent hub/appliance actually going away removes the
+    entity.
 
     Removal candidates come from the entity registry rather than from what
     this run added, so orphans left behind by earlier versions or by previous
@@ -100,7 +111,8 @@ def async_manage_platform_entities(
 
     @callback
     def _sync_entities() -> None:
-        wanted = build_entities(coordinator.data)
+        data = coordinator.data
+        wanted = build_entities(data)
         if new_ids := [unique_id for unique_id in wanted if unique_id not in known]:
             known.update(new_ids)
             async_add_entities([wanted[unique_id]() for unique_id in new_ids])
@@ -113,7 +125,11 @@ def async_manage_platform_entities(
             if registry_entry.domain != domain:
                 continue
             unique_id = registry_entry.unique_id
-            if unique_id in wanted:
+            # An id the platform still wants, or one whose parent is present
+            # and only whose reading dropped out, is not missing at all: reset
+            # the streak so the grace period always counts from the last time
+            # the entity had a reason to exist.
+            if unique_id in wanted or (retain is not None and retain(data, unique_id)):
                 stale.async_seen(unique_id)
                 surviving.add(unique_id)
                 continue
@@ -125,6 +141,18 @@ def async_manage_platform_entities(
             # may already be gone by the time this runs.
             entity_id = entity_registry.async_get_entity_id(domain, DOMAIN, unique_id)
             if entity_id is not None:
+                # Removal is destructive and irreversible from the user's side
+                # (automations referencing the entity break), so it must leave
+                # a trace: a wrongful eviction is otherwise indistinguishable
+                # from an entity that was never created.
+                _LOGGER.info(
+                    "Removing %s entity %s (unique_id %s): the Nature API has not "
+                    "reported it in %d consecutive polls",
+                    domain,
+                    entity_id,
+                    unique_id,
+                    STALE_POLLS_BEFORE_REMOVAL,
+                )
                 entity_registry.async_remove(entity_id)
         # Forget every id whose entity no longer exists — removed just now,
         # cascaded away with its device, or deleted by the user. Keeping it in

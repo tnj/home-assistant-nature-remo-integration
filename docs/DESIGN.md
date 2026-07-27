@@ -38,6 +38,17 @@ reviewer-facing rationale for Home Assistant core submission lives in
   catalog included); an AC mode change additionally triggers one coordinator
   refresh, because `aircon_settings` returns bare settings while extras
   availability is per-mode.
+- **A push that lands mid-poll wins over that poll.** `async_set_updated_data`
+  cancels the scheduled refresh but not one already running, and
+  `_async_refresh` assigns `self.data` from the in-flight fetch
+  unconditionally — so a write completing during the two API calls would be
+  overwritten by the pre-write snapshot and, since the push had rescheduled
+  the next poll, stay reverted for a full interval. `_merge_pushes_since`
+  tags every push with a generation counter and overlays the ones newer than
+  the fetch's start back on top of its result. Ids the fetch stopped
+  reporting are not resurrected, so removal grace still works. Without this,
+  the write lock below would be bypassed: the next writer would rebuild its
+  payload from rolled-back extras and clear the earlier write server-side.
 - Devices, appliances and entities are added dynamically when they appear and
   removed from the registries when they disappear — every platform drives the
   same `entity.async_manage_platform_entities` helper, whose `build_entities`
@@ -46,7 +57,16 @@ reviewer-facing rationale for Home Assistant core submission lives in
   runs are swept too) and only go after `STALE_POLLS_BEFORE_REMOVAL`
   consecutive *real* polls without the id: one truncated response must not
   destroy user customizations, and optimistic pushes (which fire the same
-  listeners) are excluded via `coordinator.poll_count`. Remo hubs and
+  listeners) are excluded via `coordinator.poll_count`. Every removal — of an
+  entity registry entry or of a device — is logged at INFO with the id and
+  the streak length, because HA core logs entity creation but not removal and
+  a wrongful eviction would otherwise be indistinguishable from an entity
+  that never existed. Platforms whose membership is **value-gated** rather
+  than presence-gated — `sensor` (a device event, or a smart-meter ECHONET
+  property, showing up in that poll) and `number` (same events) — pass a
+  `retain` predicate that keeps ids whose parent hub/appliance is still
+  reported, so an EPC or event dropout can never delete a registry entry;
+  only the parent itself vanishing does. Remo hubs and
   appliances are registered in `async_setup_entry` and re-registered on every
   poll, so `via_device` links never dangle (an energy-only Remo E has no
   entities of its own) and a nickname edited in the Nature app propagates.
@@ -272,10 +292,12 @@ unit-tested but not yet confirmed against real hardware:
 - **Entity/device removal grace against the real API.** The 3-poll grace in
   `entity.async_manage_platform_entities` (and the equivalent in
   `_async_stale_device_remover`) is unit-tested against synthetic missing
-  ids, not against real API flakiness. Some enumerations this integration
-  treats as removal-worthy absence are value-gated rather than presence-gated
-  (e.g. smart-meter/number entities keyed on whether a particular EPC or
-  event shows up in that poll's payload) — a transient EPC/event dropout on
-  real hardware could look identical to genuine removal and needs to be
-  watched for during live verification before this is trusted to not evict
-  live entities.
+  ids, not against real API flakiness. Value-gated membership (smart-meter
+  and offset/device-event entities, whose ids appear only while the EPC or
+  event is in that poll's payload) is now handled by the `retain` predicate,
+  so a transient dropout keeps the entity; what still needs live watching is
+  whether any *presence*-gated catalog (signals, TV buttons, extras) flakes
+  on real hardware. Every removal is logged at INFO
+  (`custom_components.nature_remo`), so the live check is: grep the log for
+  "Removing" and confirm each line names something genuinely deleted in the
+  Nature app.

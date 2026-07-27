@@ -81,7 +81,12 @@ via trusted publishing; then bump the pin here.
 - **Settings writes are serialized per appliance**
   (`coordinator.async_write_lock`): every payload embeds the full extras
   dict, so a climate write and an extras write racing on the same appliance
-  would otherwise silently revert each other.
+  would otherwise silently revert each other. The lock only orders writers,
+  so the coordinator additionally re-applies pushes that landed **during** a
+  poll's fetch (`_merge_pushes_since`, generation-tagged): HA assigns
+  `self.data` from the in-flight fetch unconditionally, and a rolled-back
+  snapshot would feed the next writer's payload and undo the write
+  server-side.
 - **Climate writes preserve the stored power button by default**
   (`button=None` → the appliance's current `settings.button`), so a
   temperature/fan/swing change no longer implicitly powers a unit back on.
@@ -93,7 +98,12 @@ via trusted publishing; then bump the pin here.
   missing from `STALE_POLLS_BEFORE_REMOVAL` (3) consecutive **real** polls
   is removed from the entity registry; `coordinator.poll_count` lets the
   tracker tell a real poll from an optimistic command-response push so
-  in-flight commands never advance the miss counter.
+  in-flight commands never advance the miss counter. Value-gated platforms
+  (`sensor`/`number`, whose ids exist only while the event or ECHONET
+  property is in that poll) pass a `retain` predicate so a reading dropout
+  never removes anything — only the parent hub/appliance disappearing does.
+  Every entity and device removal is logged at INFO: HA core logs entity
+  creation but not removal, and a wrongful eviction must be greppable.
 - **`device.online is not False` gates device-entity availability** — `None`
   (older firmware, which never reports the field) stays available; only an
   explicit `False` marks the hub unreachable.
