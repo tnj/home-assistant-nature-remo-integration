@@ -383,3 +383,37 @@ async def test_ac_fixed_buttons(
     mock_client.set_aircon_settings.assert_called_once_with(
         "appliance-ac-1", button="airdir-swing"
     )
+
+
+async def test_ac_fixed_button_unknown_name_uses_name(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """An AC fixed button outside the vocabulary falls back to its name."""
+    mock_client.get_appliances.return_value = [
+        replace(
+            appliance,
+            aircon=replace(
+                appliance.aircon,
+                fixed_buttons=[*appliance.aircon.fixed_buttons, "eco"],
+            ),
+        )
+        if appliance.id == "appliance-ac-1"
+        else appliance
+        for appliance in appliances
+    ]
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_registry = er.async_get(hass)
+    entity_id = entity_registry.async_get_entity_id(
+        BUTTON_DOMAIN, DOMAIN, "appliance-ac-1_button_eco"
+    )
+    assert entity_id is not None
+    entry = entity_registry.async_get(entity_id)
+    assert entry is not None
+    assert entry.translation_key is None
+    assert entry.original_name == "eco"

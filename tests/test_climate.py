@@ -86,6 +86,34 @@ def _settings(**overrides: str | None) -> AirconSettings:
     return AirconSettings(**values)  # type: ignore[arg-type]
 
 
+def _ac_settings_replaced(
+    appliances: list[Appliance], **overrides: str
+) -> list[Appliance]:
+    """The fixture appliances with the living-room AC's settings overridden."""
+    return [
+        replace(appliance, settings=replace(appliance.settings, **overrides))
+        if appliance.id == "appliance-ac-1"
+        else appliance
+        for appliance in appliances
+    ]
+
+
+async def _setup_with_ac_settings(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+    **overrides: str,
+) -> None:
+    """Set up the integration with the living-room AC's settings overridden."""
+    mock_client.get_appliances.return_value = _ac_settings_replaced(
+        appliances, **overrides
+    )
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+
 async def test_climate_state(
     hass: HomeAssistant, init_integration: MockConfigEntry
 ) -> None:
@@ -112,6 +140,9 @@ async def test_climate_state(
     assert state.attributes[ATTR_MIN_TEMP] == 18.0  # union across absolute modes
     assert state.attributes[ATTR_MAX_TEMP] == 28.0
     assert state.attributes[ATTR_TARGET_TEMP_STEP] == 1.0
+    # Extras have their own switch/select/time entities; the climate entity
+    # does not duplicate them as state attributes.
+    assert "autoclean" not in state.attributes
 
 
 async def test_climate_off_state_from_api(
@@ -121,15 +152,9 @@ async def test_climate_off_state_from_api(
     appliances: list[Appliance],
 ) -> None:
     """button == power-off reports HVACMode.OFF."""
-    mock_client.get_appliances.return_value = [
-        replace(appliance, settings=replace(appliance.settings, button="power-off"))
-        if appliance.id == "appliance-ac-1"
-        else appliance
-        for appliance in appliances
-    ]
-    mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
-    await hass.async_block_till_done()
+    await _setup_with_ac_settings(
+        hass, mock_config_entry, mock_client, appliances, button="power-off"
+    )
 
     state = hass.states.get(ENTITY)
     assert state is not None
@@ -316,12 +341,144 @@ async def test_climate_set_temperature_off(
     assert state.state == HVACMode.OFF
 
 
+async def test_climate_set_temperature_while_off_stays_off(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """A temperature change on a powered-off AC must not switch it on.
+
+    Every settings write carries a button field, so sending the power-on
+    button ("") by default would turn the AC on behind the user's back.
+    """
+    await _setup_with_ac_settings(
+        hass, mock_config_entry, mock_client, appliances, button="power-off"
+    )
+
+    mock_client.set_aircon_settings.return_value = _settings(
+        temperature="27", button="power-off"
+    )
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_TEMPERATURE,
+        {ATTR_ENTITY_ID: ENTITY, ATTR_TEMPERATURE: 27},
+        blocking=True,
+    )
+    kwargs = mock_client.set_aircon_settings.call_args.kwargs
+    assert kwargs["button"] == "power-off"
+    assert kwargs["temperature"] == "27"
+    state = hass.states.get(ENTITY)
+    assert state is not None
+    assert state.state == HVACMode.OFF
+
+
+async def test_climate_set_fan_mode_while_off_stays_off(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """Fan/swing changes on a powered-off AC keep the power-off button too."""
+    await _setup_with_ac_settings(
+        hass, mock_config_entry, mock_client, appliances, button="power-off"
+    )
+
+    mock_client.set_aircon_settings.return_value = _settings(
+        volume="2", button="power-off"
+    )
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_FAN_MODE,
+        {ATTR_ENTITY_ID: ENTITY, ATTR_FAN_MODE: "2"},
+        blocking=True,
+    )
+    kwargs = mock_client.set_aircon_settings.call_args.kwargs
+    assert kwargs["button"] == "power-off"
+    assert kwargs["air_volume"] == "2"
+
+
+async def test_climate_turn_on_while_off_sends_power_on(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """turn_on overrides the preserved button with the power-on one."""
+    await _setup_with_ac_settings(
+        hass, mock_config_entry, mock_client, appliances, button="power-off"
+    )
+
+    mock_client.set_aircon_settings.return_value = _settings()
+    await hass.services.async_call(
+        CLIMATE_DOMAIN, SERVICE_TURN_ON, {ATTR_ENTITY_ID: ENTITY}, blocking=True
+    )
+    assert mock_client.set_aircon_settings.call_args.kwargs["button"] == ""
+    state = hass.states.get(ENTITY)
+    assert state is not None
+    assert state.state == HVACMode.COOL
+
+
+async def test_climate_mode_change_omits_unparseable_temperature(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """A stored temperature nothing can snap to is left out of the payload.
+
+    The cloud then restores its own remembered value for the target mode
+    instead of the entity guessing one.
+    """
+    await _setup_with_ac_settings(
+        hass, mock_config_entry, mock_client, appliances, temperature=""
+    )
+
+    mock_client.set_aircon_settings.return_value = _settings(
+        mode="warm", temperature="20"
+    )
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_HVAC_MODE,
+        {ATTR_ENTITY_ID: ENTITY, ATTR_HVAC_MODE: HVACMode.HEAT},
+        blocking=True,
+    )
+    kwargs = mock_client.set_aircon_settings.call_args.kwargs
+    assert kwargs["operation_mode"] == "warm"
+    assert kwargs["button"] == ""
+    assert "temperature" not in kwargs
+
+
+async def test_climate_set_temperature_rejects_unsupported_mode(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
+) -> None:
+    """set_temperature validates hvac_mode exactly like set_hvac_mode does.
+
+    HA core only validates hvac_mode for set_hvac_mode; dropping it here
+    would silently set the temperature in the CURRENT mode instead.
+    """
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_TEMPERATURE,
+            {
+                ATTR_ENTITY_ID: ENTITY,
+                ATTR_TEMPERATURE: 26,
+                ATTR_HVAC_MODE: HVACMode.HEAT_COOL,
+            },
+            blocking=True,
+        )
+    mock_client.set_aircon_settings.assert_not_called()
+
+
 def test_coerce_to_allowed_skips_unparseable() -> None:
-    """Non-numeric candidates are skipped; unmatched values fall back."""
+    """Non-numeric candidates are skipped; unmatchable values yield None."""
     # "low" cannot be parsed and is skipped; 27 snaps to the nearest number.
     assert _coerce_to_allowed("27", ["low", "26", "28"]) == "26"
-    # No candidate parses: fall back to the first allowed value.
-    assert _coerce_to_allowed("30", ["low", "high"]) == "low"
+    # Nothing to snap to: the caller omits the field so the cloud keeps its
+    # own remembered value instead of the entity inventing one.
+    assert _coerce_to_allowed("30", ["low", "high"]) is None
+    assert _coerce_to_allowed("", ["26", "28"]) is None
 
 
 def test_climate_missing_settings(
@@ -442,11 +599,7 @@ async def test_climate_unsupported_values_raise(
 async def test_climate_preserves_extra_state(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
 ) -> None:
-    """Remote-side extra state (autoclean) is exposed and sent on every command."""
-    state = hass.states.get(ENTITY)
-    assert state is not None
-    assert state.attributes["autoclean"] == "on"
-
+    """Remote-side extra state (autoclean) is sent back on every command."""
     mock_client.set_aircon_settings.return_value = _settings(button="power-off")
     await hass.services.async_call(
         CLIMATE_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: ENTITY}, blocking=True
@@ -472,10 +625,6 @@ async def test_climate_without_extra_sends_none(
     mock_config_entry.add_to_hass(hass)
     await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()
-
-    state = hass.states.get(ENTITY)
-    assert state is not None
-    assert "autoclean" not in state.attributes
 
     mock_client.set_aircon_settings.return_value = _settings(extra={})
     await hass.services.async_call(

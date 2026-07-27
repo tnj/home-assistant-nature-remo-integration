@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 
@@ -53,6 +54,20 @@ class NatureRemoCoordinator(DataUpdateCoordinator[NatureRemoData]):
             update_interval=UPDATE_INTERVAL,
         )
         self.client = client
+        self._write_locks: dict[str, asyncio.Lock] = {}
+
+    def async_write_lock(self, appliance_id: str) -> asyncio.Lock:
+        """Per-appliance lock serializing settings writes across platforms.
+
+        Every settings payload embeds the full current extras dict (extras
+        omitted from a write are cleared server-side), so writes arriving
+        from different platforms (climate vs the extras switch/select/time
+        entities) must not interleave: the later writer would build its
+        payload from pre-write coordinator data and silently revert the
+        earlier write. Callers must re-read the appliance from coordinator
+        data after acquiring the lock.
+        """
+        return self._write_locks.setdefault(appliance_id, asyncio.Lock())
 
     async def _async_update_data(self) -> NatureRemoData:
         """Fetch devices and appliances (two API calls, sequential)."""

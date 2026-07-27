@@ -99,6 +99,22 @@ async def test_reauth_flow_success(
     assert init_integration.data[CONF_API_TOKEN] == "new-token"
 
 
+async def test_reauth_flow_shows_error_on_invalid_token(
+    hass: HomeAssistant,
+    mock_client: AsyncMock,
+    init_integration: MockConfigEntry,
+) -> None:
+    """An invalid token during reauth surfaces an error, not a crash."""
+    result = await init_integration.start_reauth_flow(hass)
+
+    mock_client.get_user.side_effect = NatureRemoAuthError(401, "bad token")
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_API_TOKEN: "bad-token"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_auth"}
+
+
 async def test_reauth_flow_wrong_account(
     hass: HomeAssistant,
     mock_client: AsyncMock,
@@ -114,6 +130,22 @@ async def test_reauth_flow_wrong_account(
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "wrong_account"
     assert init_integration.data[CONF_API_TOKEN] == "test-token"
+
+
+async def test_reconfigure_flow_shows_error_on_invalid_token(
+    hass: HomeAssistant,
+    mock_client: AsyncMock,
+    init_integration: MockConfigEntry,
+) -> None:
+    """An invalid token during reconfigure surfaces an error, not a crash."""
+    result = await init_integration.start_reconfigure_flow(hass)
+
+    mock_client.get_user.side_effect = NatureRemoAuthError(401, "bad token")
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_API_TOKEN: "bad-token"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_auth"}
 
 
 async def test_reconfigure_flow_success(

@@ -72,6 +72,10 @@ DEVICE_SENSORS: tuple[NatureRemoDeviceSensorDescription, ...] = (
         value_fn=lambda device: _event_value(device, EVENT_HUMIDITY),
     ),
     NatureRemoDeviceSensorDescription(
+        # Deliberately no device_class and no native_unit_of_measurement:
+        # Nature reports an uncalibrated relative illumination value, not
+        # lux, so ILLUMINANCE + lx would assert a unit the hardware does
+        # not provide.
         key="illuminance",
         event_key=EVENT_ILLUMINATION,
         translation_key="illuminance",

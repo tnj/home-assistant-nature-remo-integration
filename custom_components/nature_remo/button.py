@@ -37,73 +37,76 @@ KNOWN_LIGHT_BUTTON_KEYS = {
 
 # The everyday controls: power, input cycle, channel up/down, volume up/down.
 # These are the only TV buttons enabled by default; every other button in
-# KNOWN_TV_BUTTON_KEYS (and any unrecognized name) is created disabled.
+# KNOWN_TV_BUTTON_NAMES (and any unrecognized name) is created disabled.
 # "power" is a toggle-only IR signal and this button is its primary control
 # surface (there is no remote entity; the TV has no discrete on/off codes).
 SHORTCUT_TV_BUTTON_NAMES = frozenset(
     {"power", "select-input-src", "ch-up", "ch-down", "vol-up", "vol-down"}
 )
 
-# Translation keys for every button name the Nature API is known to enumerate
-# in tv.buttons[]. Names outside this vocabulary still get an entity (see
-# NatureRemoTVButton), falling back to their API-provided label.
-KNOWN_TV_BUTTON_KEYS = {
-    "input-terrestrial": "input_terrestrial",
-    "input-bs": "input_bs",
-    "input-cs": "input_cs",
-    "select-input-src": "select_input_src",
-    "power": "power",
-    "mute": "mute",
-    "vol-up": "vol_up",
-    "vol-down": "vol_down",
-    "ch-up": "ch_up",
-    "ch-down": "ch_down",
-    "ch-1": "ch_1",
-    "ch-2": "ch_2",
-    "ch-3": "ch_3",
-    "ch-4": "ch_4",
-    "ch-5": "ch_5",
-    "ch-6": "ch_6",
-    "ch-7": "ch_7",
-    "ch-8": "ch_8",
-    "ch-9": "ch_9",
-    "ch-10": "ch_10",
-    "ch-11": "ch_11",
-    "ch-12": "ch_12",
-    "up": "up",
-    "down": "down",
-    "left": "left",
-    "right": "right",
-    "ok": "ok",
-    "back": "back",
-    "exit": "exit",
-    "home": "home",
-    "settings": "settings",
-    "submenu": "submenu",
-    "display": "display",
-    "d": "d",
-    "tv-schedule": "tv_schedule",
-    "select-audio": "select_audio",
-    "blue": "blue",
-    "red": "red",
-    "green": "green",
-    "yellow": "yellow",
-    "play": "play",
-    "pause": "pause",
-    "stop": "stop",
-    "prev": "prev",
-    "next": "next",
-    "fast-rewind": "fast_rewind",
-    "fast-forward": "fast_forward",
-    "record": "record",
-    "rewind-10-sec": "rewind_10_sec",
-    "forward-30-sec": "forward_30_sec",
-    "clear-sound": "clear_sound",
-    "rec-list": "rec_list",
-    "program-info": "program_info",
-    "subtitle": "subtitle",
-    "tool": "tool",
-}
+# Button names the Nature API is known to enumerate in tv.buttons[]. Names
+# outside this vocabulary still get an entity (see NatureRemoTVButton),
+# falling back to their API-provided label. Each known name's translation key
+# is name.replace("-", "_") (verified against strings.json's button section).
+KNOWN_TV_BUTTON_NAMES = frozenset(
+    {
+        "input-terrestrial",
+        "input-bs",
+        "input-cs",
+        "select-input-src",
+        "power",
+        "mute",
+        "vol-up",
+        "vol-down",
+        "ch-up",
+        "ch-down",
+        "ch-1",
+        "ch-2",
+        "ch-3",
+        "ch-4",
+        "ch-5",
+        "ch-6",
+        "ch-7",
+        "ch-8",
+        "ch-9",
+        "ch-10",
+        "ch-11",
+        "ch-12",
+        "up",
+        "down",
+        "left",
+        "right",
+        "ok",
+        "back",
+        "exit",
+        "home",
+        "settings",
+        "submenu",
+        "display",
+        "d",
+        "tv-schedule",
+        "select-audio",
+        "blue",
+        "red",
+        "green",
+        "yellow",
+        "play",
+        "pause",
+        "stop",
+        "prev",
+        "next",
+        "fast-rewind",
+        "fast-forward",
+        "record",
+        "rewind-10-sec",
+        "forward-30-sec",
+        "clear-sound",
+        "rec-list",
+        "program-info",
+        "subtitle",
+        "tool",
+    }
+)
 
 
 async def async_setup_entry(
@@ -268,8 +271,8 @@ class NatureRemoTVButton(NatureRemoApplianceEntity, ButtonEntity):
         self._attr_entity_registry_enabled_default = (
             button.name in SHORTCUT_TV_BUTTON_NAMES
         )
-        if (translation_key := KNOWN_TV_BUTTON_KEYS.get(button.name)) is not None:
-            self._attr_translation_key = translation_key
+        if button.name in KNOWN_TV_BUTTON_NAMES:
+            self._attr_translation_key = button.name.replace("-", "_")
         else:
             self._attr_name = button.label or button.name
 

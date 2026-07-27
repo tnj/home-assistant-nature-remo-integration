@@ -19,7 +19,7 @@ from homeassistant.components.number import (
 )
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
@@ -120,9 +120,11 @@ class NatureRemoOffsetNumber(NatureRemoDeviceEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Write the offset and apply the returned device state."""
+        if not value.is_integer():
+            raise ServiceValidationError(f"Offset must be a whole number, got {value}")
         try:
             device = await self.entity_description.set_fn(
-                self.coordinator.client, self._device_id, round(value)
+                self.coordinator.client, self._device_id, int(value)
             )
         except NatureRemoError as err:
             raise HomeAssistantError(

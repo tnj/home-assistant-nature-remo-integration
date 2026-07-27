@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -35,10 +39,23 @@ jobs:
       - run: >
           uv run pytest -q
           --cov=custom_components.nature_remo --cov=aionatureremo
-          --cov-report=term-missing
+          --cov-report=term-missing --cov-fail-under=95
+      - run: >
+          uv run pytest -q tests/test_config_flow.py
+          --cov=custom_components.nature_remo.config_flow
+          --cov-report=term-missing --cov-fail-under=100
 
   hassfest:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hacs/action@main
+        with:
+          category: integration
+          ignore: brands

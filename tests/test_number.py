@@ -3,6 +3,7 @@
 from dataclasses import replace
 from unittest.mock import AsyncMock
 
+import pytest
 from aionatureremo import Device
 from homeassistant.components.number import (
     ATTR_VALUE,
@@ -13,6 +14,7 @@ from homeassistant.components.number import (
 )
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 
@@ -60,23 +62,42 @@ async def test_set_temperature_offset(
     assert state.state == "2.0"
 
 
-async def test_set_temperature_offset_rounds_fractional_value(
+async def test_set_temperature_offset_rejects_fractional_value(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+) -> None:
+    """A non-integral value is rejected instead of silently rounded."""
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            NUMBER_DOMAIN,
+            SERVICE_SET_VALUE,
+            {
+                ATTR_ENTITY_ID: "number.living_remo_temperature_offset",
+                ATTR_VALUE: 2.5,
+            },
+            blocking=True,
+        )
+    mock_client.set_temperature_offset.assert_not_called()
+
+
+async def test_set_temperature_offset_accepts_integral_float(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
     mock_client: AsyncMock,
     devices: list[Device],
 ) -> None:
-    """A fractional value rounds instead of truncating toward zero."""
+    """An integral float (e.g. 3.0 from box mode) is accepted as an int."""
     mock_client.set_temperature_offset.return_value = replace(
-        devices[0], temperature_offset=2.0
+        devices[0], temperature_offset=3.0
     )
     await hass.services.async_call(
         NUMBER_DOMAIN,
         SERVICE_SET_VALUE,
         {
             ATTR_ENTITY_ID: "number.living_remo_temperature_offset",
-            ATTR_VALUE: 1.6,
+            ATTR_VALUE: 3.0,
         },
         blocking=True,
     )
-    mock_client.set_temperature_offset.assert_called_once_with("device-remo3-1", 2)
+    mock_client.set_temperature_offset.assert_called_once_with("device-remo3-1", 3)

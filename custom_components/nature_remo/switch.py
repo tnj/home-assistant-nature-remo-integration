@@ -6,16 +6,16 @@ from typing import Any
 
 from aionatureremo import AirconExtra
 from homeassistant.components.switch import SwitchEntity
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
-from .entity import NatureRemoExtraEntity, extras_catalog
+from .entity import NatureRemoExtraEntity, extra_platform, extras_catalog
 
 PARALLEL_UPDATES = 1
 
 KNOWN_EXTRA_TRANSLATION_KEYS = {"autoclean": "autoclean"}
-_ON_OFF = {"on", "off"}
 
 
 async def async_setup_entry(
@@ -32,19 +32,10 @@ async def async_setup_entry(
         new_entities: list[NatureRemoACExtraSwitch] = []
         for appliance_id, appliance in coordinator.data.appliances.items():
             for extra in extras_catalog(appliance):
-                # Only binary on/off extras map onto a switch; multi-option
-                # "choice" extras become selects and "time" extras become
-                # time entities. An empty options list yields an empty set
-                # here, which simply fails the comparison. availability is
-                # NOT checked: the catalog is static across operation modes
-                # and only each entry's availability flips with the current
-                # mode (probe-verified), so every binary extra gets an
-                # entity and the entity's `available` property tracks the
-                # flips.
-                if (
-                    extra.type != "choice"
-                    or {option.value for option in extra.options} != _ON_OFF
-                ):
+                # Only binary on/off extras map onto a switch; see
+                # entity.extra_platform for the shared classification (and
+                # why availability plays no part in it).
+                if extra_platform(extra) is not Platform.SWITCH:
                     continue
                 unique_id = f"{appliance_id}_extra_{extra.id}"
                 if unique_id in known:

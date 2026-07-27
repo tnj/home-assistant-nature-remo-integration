@@ -4,16 +4,16 @@ from __future__ import annotations
 
 from aionatureremo import AirconExtra
 from homeassistant.components.select import SelectEntity
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
-from .entity import NatureRemoExtraEntity, extras_catalog
+from .entity import NatureRemoExtraEntity, extra_platform, extras_catalog
 
 PARALLEL_UPDATES = 1
 
 KNOWN_EXTRA_TRANSLATION_KEYS = {"humid": "humid", "dehumid": "dehumid"}
-_ON_OFF = {"on", "off"}
 
 
 async def async_setup_entry(
@@ -30,14 +30,11 @@ async def async_setup_entry(
         new_entities: list[NatureRemoExtraSelect] = []
         for appliance_id, appliance in coordinator.data.appliances.items():
             for extra in extras_catalog(appliance):
-                values = [option.value for option in extra.options]
                 # Multi-option "choice" extras (e.g. Daikin humid:
-                # off/40%/45%/50%/continuous/beauty) map onto a select;
-                # binary on/off extras are switches and optionless "time"
-                # extras are time entities. availability is NOT checked —
-                # the catalog is static and only availability flips with
-                # the current mode, tracked by the entity's `available`.
-                if extra.type != "choice" or not values or set(values) == _ON_OFF:
+                # off/40%/45%/50%/continuous/beauty) map onto a select; see
+                # entity.extra_platform for the shared classification (and
+                # why availability plays no part in it).
+                if extra_platform(extra) is not Platform.SELECT:
                     continue
                 unique_id = f"{appliance_id}_extra_{extra.id}"
                 if unique_id in known:

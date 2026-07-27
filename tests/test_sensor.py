@@ -1,10 +1,11 @@
 """Tests for the Nature Remo sensor platform."""
 
+from dataclasses import replace
 from datetime import timedelta
 from unittest.mock import AsyncMock
 
 import homeassistant.util.dt as dt_util
-from aionatureremo import Appliance, NatureRemoConnectionError
+from aionatureremo import Appliance, Device, NatureRemoConnectionError
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import (
@@ -69,6 +70,34 @@ async def test_sensors_unavailable_on_update_failure(
     state = hass.states.get("sensor.living_remo_temperature")
     assert state is not None
     assert state.state == STATE_UNAVAILABLE
+
+
+async def test_offline_device_sensors_unavailable(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+    devices: list[Device],
+) -> None:
+    """A hub reporting online=False serves no readings; None keeps serving.
+
+    ``online`` only exists on newer firmware, so the Remo mini fixture
+    (no flag at all, parsed as None) must stay available.
+    """
+    mock_client.get_devices.return_value = [
+        replace(device, online=False) if device.id == "device-remo3-1" else device
+        for device in devices
+    ]
+
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert hass.states.get("sensor.living_remo_temperature").state == STATE_UNAVAILABLE
+    assert hass.states.get("sensor.living_remo_humidity").state == STATE_UNAVAILABLE
+
+    mini = hass.states.get("sensor.bedroom_remo_mini_temperature")
+    assert mini is not None
+    assert mini.state != STATE_UNAVAILABLE
 
 
 async def test_smart_meter_sensors(

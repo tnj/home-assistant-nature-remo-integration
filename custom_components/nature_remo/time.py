@@ -6,16 +6,16 @@ from datetime import time
 
 from aionatureremo import AirconExtra
 from homeassistant.components.time import TimeEntity
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
-from .entity import NatureRemoExtraEntity, extras_catalog
+from .entity import NatureRemoExtraEntity, extra_platform, extras_catalog
 
 PARALLEL_UPDATES = 1
 
 KNOWN_EXTRA_TRANSLATION_KEYS = {"new_sleep": "new_sleep"}
-EXTRA_TYPE_TIME = "time"
 
 
 async def async_setup_entry(
@@ -33,9 +33,10 @@ async def async_setup_entry(
         for appliance_id, appliance in coordinator.data.appliances.items():
             for extra in extras_catalog(appliance):
                 # type "time" extras (e.g. Daikin new_sleep) carry an HH:MM
-                # value instead of an options list. availability is NOT
-                # checked — tracked dynamically by the entity's `available`.
-                if extra.type != EXTRA_TYPE_TIME:
+                # value instead of an options list; see entity.extra_platform
+                # for the shared classification (and why availability plays
+                # no part in it).
+                if extra_platform(extra) is not Platform.TIME:
                     continue
                 unique_id = f"{appliance_id}_extra_{extra.id}"
                 if unique_id in known:

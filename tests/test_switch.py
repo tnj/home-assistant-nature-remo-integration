@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock
 import homeassistant.util.dt as dt_util
 import pytest
 from aionatureremo import AirconSettings, Appliance
+from homeassistant.components.select import DOMAIN as SELECT_DOMAIN
 from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
+from homeassistant.components.time import DOMAIN as TIME_DOMAIN
 from homeassistant.const import (
     ATTR_ENTITY_ID,
     SERVICE_TURN_OFF,
@@ -21,6 +23,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity_component import DATA_INSTANCES
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
@@ -46,6 +49,26 @@ def _with_extra_availability(
                         extra,
                         availability=availability.get(extra.id, extra.availability),
                     )
+                    for extra in appliance.aircon.extras
+                ],
+            )
+            modified.append(replace(appliance, aircon=aircon))
+        else:
+            modified.append(appliance)
+    return modified
+
+
+def _without_extra_options(
+    appliances: list[Appliance], appliance_id: str, extra_id: str
+) -> list[Appliance]:
+    """Rebuild the appliance list with one extra's options list emptied."""
+    modified = []
+    for appliance in appliances:
+        if appliance.id == appliance_id and appliance.aircon is not None:
+            aircon = replace(
+                appliance.aircon,
+                extras=[
+                    replace(extra, options=[]) if extra.id == extra_id else extra
                     for extra in appliance.aircon.extras
                 ],
             )
@@ -293,3 +316,64 @@ async def test_floor_heater_extra_switch_turn_on(
     state = hass.states.get(FH_ENTITY)
     assert state is not None
     assert state.state == STATE_ON  # optimistic update from the response
+
+
+async def test_optionless_choice_extra_gets_no_entity(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """A choice extra with an empty options list gets no entity at all.
+
+    Covers the shared classification for all three extras platforms:
+    nothing can be rendered for a choice with nothing to choose from, so
+    neither switch, select nor time may claim it.
+    """
+    mock_client.get_appliances.return_value = _without_extra_options(
+        appliances, "appliance-ac-1", "autoclean"
+    )
+
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert hass.states.get(ENTITY) is None
+    entity_registry = er.async_get(hass)
+    for domain in (SWITCH_DOMAIN, SELECT_DOMAIN, TIME_DOMAIN):
+        assert (
+            entity_registry.async_get_entity_id(
+                domain, DOMAIN, "appliance-ac-1_extra_autoclean"
+            )
+            is None
+        )
+
+
+async def test_extra_write_after_appliance_vanishes(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+) -> None:
+    """An appliance gone from the account fails the write, never with KeyError.
+
+    Drops the appliance from the coordinator data without notifying the
+    listeners, which is the race the guard exists for: a write already in
+    flight when the poll lands (a completed poll would also unregister the
+    entity). Both state reads and the write must survive it — and the write
+    is invoked directly because core filters unavailable entities out of
+    service calls, so a service call would never reach the entity.
+    """
+    entity = hass.data[DATA_INSTANCES][SWITCH_DOMAIN].get_entity(ENTITY)
+    assert entity is not None
+    coordinator = init_integration.runtime_data
+    coordinator.data.appliances.pop("appliance-ac-1")
+
+    assert entity.appliance.id == "appliance-ac-1"  # last-known snapshot
+    entity.async_write_ha_state()
+    state = hass.states.get(ENTITY)
+    assert state is not None
+    assert state.state == STATE_UNAVAILABLE
+
+    with pytest.raises(HomeAssistantError, match="no longer reported"):
+        await entity.async_turn_off()
+    mock_client.set_aircon_settings.assert_not_called()
