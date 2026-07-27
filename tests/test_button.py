@@ -19,6 +19,7 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.nature_remo.const import DOMAIN
+from tests.conftest import async_poll
 
 
 async def test_ir_signal_buttons(
@@ -36,6 +37,44 @@ async def test_ir_signal_buttons(
         blocking=True,
     )
     mock_client.send_signal.assert_called_once_with("signal-1")
+
+
+async def test_signal_rename_follows_the_api(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """Renaming a signal in the Nature app renames the button on the next poll.
+
+    Signal names are free text the user typed (unlike the catalog-defined
+    TV / light / projector / AC button names), so the entity must not freeze
+    the name it was created with. The entity_id stays put — only the
+    displayed name follows.
+    """
+    state = hass.states.get("button.fan_power")
+    assert state is not None
+    assert state.attributes["friendly_name"] == "Fan Power"
+
+    mock_client.get_appliances.return_value = [
+        replace(
+            appliance,
+            signals=[
+                replace(signal, name="Main power")
+                if signal.id == "signal-1"
+                else signal
+                for signal in appliance.signals
+            ],
+        )
+        if appliance.id == "appliance-ir-1"
+        else appliance
+        for appliance in appliances
+    ]
+    await async_poll(hass)
+
+    state = hass.states.get("button.fan_power")
+    assert state is not None
+    assert state.attributes["friendly_name"] == "Fan Main power"
 
 
 async def test_light_extra_buttons(

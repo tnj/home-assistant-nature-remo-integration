@@ -38,10 +38,18 @@ reviewer-facing rationale for Home Assistant core submission lives in
   catalog included); an AC mode change additionally triggers one coordinator
   refresh, because `aircon_settings` returns bare settings while extras
   availability is per-mode.
-- Devices and appliances are added dynamically when they appear and removed
-  from the device registry when they disappear. Remo hubs are eagerly
-  registered in `async_setup_entry` so `via_device` links never dangle
-  (an energy-only Remo E has no entities of its own).
+- Devices, appliances and entities are added dynamically when they appear and
+  removed from the registries when they disappear — every platform drives the
+  same `entity.async_manage_platform_entities` helper, whose `build_entities`
+  callback maps unique_id → factory for everything the current data warrants.
+  Removal candidates come from the entity registry (so orphans from earlier
+  runs are swept too) and only go after `STALE_POLLS_BEFORE_REMOVAL`
+  consecutive *real* polls without the id: one truncated response must not
+  destroy user customizations, and optimistic pushes (which fire the same
+  listeners) are excluded via `coordinator.poll_count`. Remo hubs and
+  appliances are registered in `async_setup_entry` and re-registered on every
+  poll, so `via_device` links never dangle (an energy-only Remo E has no
+  entities of its own) and a nickname edited in the Nature app propagates.
 - `PARALLEL_UPDATES = 0` in `sensor.py` (read-only); `= 1` in every command
   platform (serializes writes; protects the rate budget and IR emission).
 

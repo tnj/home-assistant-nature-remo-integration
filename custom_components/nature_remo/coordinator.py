@@ -54,6 +54,11 @@ class NatureRemoCoordinator(DataUpdateCoordinator[NatureRemoData]):
             update_interval=UPDATE_INTERVAL,
         )
         self.client = client
+        # Number of successful real polls. Optimistic pushes (see
+        # async_update_appliance) notify listeners without touching it, so
+        # registry cleanups can tell "the API did not report this id again"
+        # from "a command response refreshed one appliance".
+        self.poll_count = 0
         self._write_locks: dict[str, asyncio.Lock] = {}
 
     def async_write_lock(self, appliance_id: str) -> asyncio.Lock:
@@ -88,6 +93,7 @@ class NatureRemoCoordinator(DataUpdateCoordinator[NatureRemoData]):
             raise UpdateFailed(
                 f"Error communicating with the Nature API: {err}"
             ) from err
+        self.poll_count += 1
         return NatureRemoData(
             devices={device.id: device for device in devices},
             appliances={appliance.id: appliance for appliance in appliances},

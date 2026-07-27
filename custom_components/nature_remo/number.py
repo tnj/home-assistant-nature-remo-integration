@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from functools import partial
 
 from aionatureremo import (
     EVENT_HUMIDITY,
@@ -17,13 +18,18 @@ from homeassistant.components.number import (
     NumberEntityDescription,
     NumberMode,
 )
-from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import EntityCategory, Platform
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
-from .entity import NatureRemoDeviceEntity, command_error_message
+from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator, NatureRemoData
+from .entity import (
+    EntityFactory,
+    NatureRemoDeviceEntity,
+    async_manage_platform_entities,
+    command_error_message,
+)
 
 PARALLEL_UPDATES = 1
 
@@ -76,25 +82,25 @@ async def async_setup_entry(
 ) -> None:
     """Set up offset numbers for devices that measure te/hu."""
     coordinator = entry.runtime_data
-    known: set[str] = set()
 
-    @callback
-    def _sync_entities() -> None:
-        new_entities: list[NatureRemoOffsetNumber] = []
-        for device_id, device in coordinator.data.devices.items():
-            for description in NUMBERS:
-                unique_id = f"{device_id}_{description.key}"
-                if unique_id in known or description.event_key not in device.events:
-                    continue
-                known.add(unique_id)
-                new_entities.append(
-                    NatureRemoOffsetNumber(coordinator, device_id, description)
-                )
-        if new_entities:
-            async_add_entities(new_entities)
+    def _build_entities(data: NatureRemoData) -> dict[str, EntityFactory]:
+        # Only devices that actually report the measurement can calibrate it.
+        return {
+            f"{device_id}_{description.key}": partial(
+                NatureRemoOffsetNumber, coordinator, device_id, description
+            )
+            for device_id, device in data.devices.items()
+            for description in NUMBERS
+            if description.event_key in device.events
+        }
 
-    _sync_entities()
-    entry.async_on_unload(coordinator.async_add_listener(_sync_entities))
+    async_manage_platform_entities(
+        hass,
+        entry,
+        async_add_entities,
+        domain=Platform.NUMBER,
+        build_entities=_build_entities,
+    )
 
 
 class NatureRemoOffsetNumber(NatureRemoDeviceEntity, NumberEntity):

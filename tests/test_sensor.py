@@ -6,8 +6,10 @@ from unittest.mock import AsyncMock
 
 import homeassistant.util.dt as dt_util
 from aionatureremo import Appliance, Device, NatureRemoConnectionError
+from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_component import DATA_INSTANCES
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
@@ -98,6 +100,29 @@ async def test_offline_device_sensors_unavailable(
     mini = hass.states.get("sensor.bedroom_remo_mini_temperature")
     assert mini is not None
     assert mini.state != STATE_UNAVAILABLE
+
+
+async def test_sensor_reads_after_the_device_vanishes(
+    hass: HomeAssistant, init_integration: MockConfigEntry
+) -> None:
+    """A hub gone from the coordinator data never raises a bare KeyError.
+
+    Mirrors the appliance snapshot (see test_switch): the devices dict can
+    lose the hub while reads still reach the entity, because the poll that
+    drops it notifies the listeners after the data is swapped in.
+    """
+    entity = hass.data[DATA_INSTANCES][SENSOR_DOMAIN].get_entity(
+        "sensor.living_remo_temperature"
+    )
+    assert entity is not None
+    coordinator = init_integration.runtime_data
+    coordinator.data.devices.pop("device-remo3-1")
+
+    assert entity.device.id == "device-remo3-1"  # last-known snapshot
+    entity.async_write_ha_state()
+    state = hass.states.get("sensor.living_remo_temperature")
+    assert state is not None
+    assert state.state == STATE_UNAVAILABLE
 
 
 async def test_smart_meter_sensors(

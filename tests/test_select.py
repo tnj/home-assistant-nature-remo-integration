@@ -226,6 +226,44 @@ async def test_extra_select_rejects_unknown_option(
     mock_client.set_aircon_settings.assert_not_called()
 
 
+async def test_extra_select_options_follow_the_catalog(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """The option list is read per poll, not frozen at entity creation.
+
+    The extras catalog is remote-side data: it changes when Nature updates
+    the remote definition or the user re-registers the appliance.
+    """
+    assert hass.states.get(ENTITY).attributes[ATTR_OPTIONS] == HUMID_OPTIONS
+
+    mock_client.get_appliances.return_value = [
+        replace(
+            appliance,
+            aircon=replace(
+                appliance.aircon,
+                extras=[
+                    replace(extra, options=extra.options[:3])
+                    if extra.id == "humid"
+                    else extra
+                    for extra in appliance.aircon.extras
+                ],
+            ),
+        )
+        if appliance.id == "appliance-ac-2"
+        else appliance
+        for appliance in appliances
+    ]
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=61))
+    await hass.async_block_till_done()
+
+    state = hass.states.get(ENTITY)
+    assert state is not None
+    assert state.attributes[ATTR_OPTIONS] == HUMID_OPTIONS[:3]
+
+
 async def test_select_fallback_name_from_catalog_text(
     hass: HomeAssistant, init_integration: MockConfigEntry
 ) -> None:

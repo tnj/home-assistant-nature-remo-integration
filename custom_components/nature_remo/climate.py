@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from functools import partial
 from itertools import pairwise
 from typing import Any
 
@@ -21,14 +22,19 @@ from homeassistant.components.climate.const import (
     ClimateEntityFeature,
     HVACMode,
 )
-from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import ATTR_TEMPERATURE, Platform, UnitOfTemperature
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util.unit_conversion import TemperatureConverter
 
-from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
-from .entity import NatureRemoApplianceEntity, command_error_message
+from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator, NatureRemoData
+from .entity import (
+    EntityFactory,
+    NatureRemoApplianceEntity,
+    async_manage_platform_entities,
+    command_error_message,
+)
 
 PARALLEL_UPDATES = 1
 
@@ -110,30 +116,31 @@ async def async_setup_entry(
 ) -> None:
     """Set up climate entities for AC and floor heater appliances."""
     coordinator = entry.runtime_data
-    known: set[str] = set()
 
-    @callback
-    def _sync_entities() -> None:
-        new_entities: list[NatureRemoClimate] = []
-        for appliance_id, appliance in coordinator.data.appliances.items():
-            if appliance_id in known:
-                continue
+    def _build_entities(data: NatureRemoData) -> dict[str, EntityFactory]:
+        # The unique_id of a climate entity is the bare appliance id.
+        entities: dict[str, EntityFactory] = {}
+        for appliance_id, appliance in data.appliances.items():
             if appliance.type == APPLIANCE_TYPE_AC and appliance.aircon is not None:
-                known.add(appliance_id)
-                new_entities.append(NatureRemoClimate(coordinator, appliance_id))
+                entities[appliance_id] = partial(
+                    NatureRemoClimate, coordinator, appliance_id
+                )
             elif (
                 appliance.type == APPLIANCE_TYPE_FLOOR_HEATER
                 and appliance.floor_heater is not None
             ):
-                known.add(appliance_id)
-                new_entities.append(
-                    NatureRemoFloorHeaterClimate(coordinator, appliance_id)
+                entities[appliance_id] = partial(
+                    NatureRemoFloorHeaterClimate, coordinator, appliance_id
                 )
-        if new_entities:
-            async_add_entities(new_entities)
+        return entities
 
-    _sync_entities()
-    entry.async_on_unload(coordinator.async_add_listener(_sync_entities))
+    async_manage_platform_entities(
+        hass,
+        entry,
+        async_add_entities,
+        domain=Platform.CLIMATE,
+        build_entities=_build_entities,
+    )
 
 
 class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):

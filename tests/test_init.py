@@ -1,10 +1,11 @@
 """Tests for Nature Remo integration setup."""
 
+from dataclasses import replace
 from datetime import timedelta
 from unittest.mock import AsyncMock
 
 import homeassistant.util.dt as dt_util
-from aionatureremo import NatureRemoAuthError, NatureRemoConnectionError
+from aionatureremo import Appliance, NatureRemoAuthError, NatureRemoConnectionError
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
@@ -14,8 +15,9 @@ from pytest_homeassistant_custom_component.common import (
 )
 
 from custom_components.nature_remo import async_remove_config_entry_device
-from custom_components.nature_remo.const import DOMAIN
+from custom_components.nature_remo.const import DOMAIN, STALE_POLLS_BEFORE_REMOVAL
 from custom_components.nature_remo.coordinator import NatureRemoCoordinator
+from tests.conftest import async_poll
 
 
 async def test_setup_and_unload(
@@ -132,13 +134,19 @@ async def test_new_appliance_adds_entities(
     assert hass.states.get("sensor.smart_meter_power") is not None
 
 
-async def test_stale_device_is_removed(
+async def test_stale_device_is_removed_after_the_grace_period(
     hass: HomeAssistant,
     init_integration: MockConfigEntry,
     mock_client: AsyncMock,
-    appliances: list,
+    appliances: list[Appliance],
 ) -> None:
-    """An appliance that disappears is removed from the device registry."""
+    """A vanished appliance is removed, but not on the strength of one poll.
+
+    Removing a device takes its entities, its area and every automation
+    referencing them along, so a single truncated response must not be able
+    to trigger it.
+    """
+    assert STALE_POLLS_BEFORE_REMOVAL == 3
     device_registry = dr.async_get(hass)
     assert (
         device_registry.async_get_device(identifiers={(DOMAIN, "appliance-ir-1")})
@@ -148,13 +156,72 @@ async def test_stale_device_is_removed(
     mock_client.get_appliances.return_value = [
         appliance for appliance in appliances if appliance.id != "appliance-ir-1"
     ]
-    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=61))
-    await hass.async_block_till_done()
+    await async_poll(hass, 2)
+    assert (
+        device_registry.async_get_device(identifiers={(DOMAIN, "appliance-ir-1")})
+        is not None
+    )
 
+    await async_poll(hass)
     assert (
         device_registry.async_get_device(identifiers={(DOMAIN, "appliance-ir-1")})
         is None
     )
+
+
+async def test_stale_device_returning_resets_the_grace_period(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """A device reported again mid-streak keeps its registry entry."""
+    device_registry = dr.async_get(hass)
+
+    mock_client.get_appliances.return_value = [
+        appliance for appliance in appliances if appliance.id != "appliance-ir-1"
+    ]
+    await async_poll(hass, 2)
+    mock_client.get_appliances.return_value = appliances
+    await async_poll(hass)
+    mock_client.get_appliances.return_value = [
+        appliance for appliance in appliances if appliance.id != "appliance-ir-1"
+    ]
+    await async_poll(hass, 2)
+
+    assert (
+        device_registry.async_get_device(identifiers={(DOMAIN, "appliance-ir-1")})
+        is not None
+    )
+
+
+async def test_appliance_rename_reaches_the_device_registry(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """A nickname edited in the Nature app propagates on the next poll.
+
+    The device would otherwise keep the nickname it happened to have when
+    its first entity was created.
+    """
+    device_registry = dr.async_get(hass)
+    device = device_registry.async_get_device(identifiers={(DOMAIN, "appliance-ir-1")})
+    assert device is not None
+    assert device.name == "Fan"
+
+    mock_client.get_appliances.return_value = [
+        replace(appliance, nickname="Ceiling fan")
+        if appliance.id == "appliance-ir-1"
+        else appliance
+        for appliance in appliances
+    ]
+    await async_poll(hass)
+
+    device = device_registry.async_get_device(identifiers={(DOMAIN, "appliance-ir-1")})
+    assert device is not None
+    assert device.name == "Ceiling fan"
 
 
 async def test_remove_config_entry_device(

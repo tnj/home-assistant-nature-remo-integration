@@ -4,16 +4,21 @@ from __future__ import annotations
 
 import json
 from collections.abc import Generator
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import homeassistant.util.dt as dt_util
 import pytest
 from aionatureremo import Appliance, Device, RateLimit, User
 from homeassistant.const import CONF_API_TOKEN
 from homeassistant.core import HomeAssistant
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+)
 
-from custom_components.nature_remo.const import DOMAIN
+from custom_components.nature_remo.const import DOMAIN, UPDATE_INTERVAL
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -21,6 +26,15 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def load_json_fixture(name: str) -> list[dict[str, object]]:
     """Load a JSON fixture file."""
     return json.loads((FIXTURES / name).read_text())
+
+
+async def async_poll(hass: HomeAssistant, times: int = 1) -> None:
+    """Run `times` real coordinator polls, settling the event loop after each."""
+    for _ in range(times):
+        async_fire_time_changed(
+            hass, dt_util.utcnow() + UPDATE_INTERVAL + timedelta(seconds=1)
+        )
+        await hass.async_block_till_done()
 
 
 @pytest.fixture(autouse=True)

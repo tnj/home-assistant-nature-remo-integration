@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 
 from aionatureremo import (
@@ -14,12 +15,124 @@ from aionatureremo import (
     NatureRemoRateLimitError,
 )
 from homeassistant.const import EntityCategory, Platform
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, DeviceInfo
+from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
-from .coordinator import NatureRemoCoordinator
+from .const import DOMAIN, STALE_POLLS_BEFORE_REMOVAL
+from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator, NatureRemoData
+
+type EntityFactory = Callable[[], Entity]
+type EntityBuilder = Callable[[NatureRemoData], dict[str, EntityFactory]]
+
+
+class StaleIdTracker:
+    """Counts consecutive real polls in which an id went missing.
+
+    Deleting a registry entry also deletes the customizations attached to
+    it, so one truncated API response must not be enough to trigger it: an
+    id only counts as gone after ``STALE_POLLS_BEFORE_REMOVAL`` consecutive
+    real polls without it. Optimistic command responses notify the same
+    listeners without polling the API, hence the ``poll_count`` guard —
+    without it, three commands in a row would evict a live id.
+    """
+
+    def __init__(self, coordinator: NatureRemoCoordinator) -> None:
+        """Initialize an empty tracker reading polls from the coordinator."""
+        self._coordinator = coordinator
+        # id -> (poll_count when the miss was counted, misses in a row)
+        self._misses: dict[str, tuple[int, int]] = {}
+
+    @callback
+    def async_seen(self, key: str) -> None:
+        """Reset the streak of an id the API reported again."""
+        self._misses.pop(key, None)
+
+    @callback
+    def async_record_miss(self, key: str) -> bool:
+        """Count one miss for an id and report whether it is now stale."""
+        poll_count = self._coordinator.poll_count
+        last_poll, misses = self._misses.get(key, (-1, 0))
+        if poll_count == last_poll:
+            # Already counted for this poll: this pass was triggered by an
+            # optimistic update, which says nothing about the id's fate.
+            return False
+        misses += 1
+        if misses < STALE_POLLS_BEFORE_REMOVAL:
+            self._misses[key] = (poll_count, misses)
+            return False
+        self._misses.pop(key, None)
+        return True
+
+
+@callback
+def async_manage_platform_entities(
+    hass: HomeAssistant,
+    entry: NatureRemoConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+    *,
+    domain: Platform,
+    build_entities: EntityBuilder,
+) -> None:
+    """Keep one platform's entities in sync with what the API reports.
+
+    Every platform passes a ``build_entities`` callback mapping the unique_id
+    of each entity the current data warrants to a factory that builds it
+    (called only for ids that are genuinely new). Entities appear as their
+    ids do, and — after the grace period of ``StaleIdTracker`` — vanish from
+    the entity registry once their ids stay gone: an IR signal or a TV button
+    deleted in the Nature app would otherwise leave an orphan that still
+    looks available and errors on press.
+
+    Removal candidates come from the entity registry rather than from what
+    this run added, so orphans left behind by earlier versions or by previous
+    Home Assistant runs are swept as well.
+    """
+    coordinator = entry.runtime_data
+    entity_registry = er.async_get(hass)
+    stale = StaleIdTracker(coordinator)
+    # Purely add-dedup; the registry above is the source of truth for removal.
+    known: set[str] = set()
+
+    @callback
+    def _sync_entities() -> None:
+        wanted = build_entities(coordinator.data)
+        if new_ids := [unique_id for unique_id in wanted if unique_id not in known]:
+            known.update(new_ids)
+            async_add_entities([wanted[unique_id]() for unique_id in new_ids])
+        # Ids this platform still owns a registry entry for once the sweep
+        # below is done.
+        surviving: set[str] = set()
+        for registry_entry in er.async_entries_for_config_entry(
+            entity_registry, entry.entry_id
+        ):
+            if registry_entry.domain != domain:
+                continue
+            unique_id = registry_entry.unique_id
+            if unique_id in wanted:
+                stale.async_seen(unique_id)
+                surviving.add(unique_id)
+                continue
+            if not stale.async_record_miss(unique_id):
+                surviving.add(unique_id)
+                continue
+            # Look the id up again instead of trusting the snapshot: removing
+            # the appliance's device cascades into its entities, so the entry
+            # may already be gone by the time this runs.
+            entity_id = entity_registry.async_get_entity_id(domain, DOMAIN, unique_id)
+            if entity_id is not None:
+                entity_registry.async_remove(entity_id)
+        # Forget every id whose entity no longer exists — removed just now,
+        # cascaded away with its device, or deleted by the user. Keeping it in
+        # `known` would make a returning id invisible until a restart.
+        known.intersection_update(wanted.keys() | surviving)
+
+    _sync_entities()
+    entry.async_on_unload(coordinator.async_add_listener(_sync_entities))
 
 
 def build_remo_device_info(device: Device) -> DeviceInfo:
@@ -40,6 +153,26 @@ def build_remo_device_info(device: Device) -> DeviceInfo:
     )
     if device.mac_address:
         device_info["connections"] = {(CONNECTION_NETWORK_MAC, device.mac_address)}
+    return device_info
+
+
+def build_appliance_device_info(appliance: Appliance) -> DeviceInfo:
+    """Build device-registry info for an appliance behind a Remo (spec 5.4).
+
+    Shared by the entity base and the per-poll device registration in
+    ``async_setup_entry``: registering from the same builder is what lets a
+    nickname edited in the Nature app reach the device registry, and keeps
+    the two descriptions from drifting apart.
+    """
+    model = appliance.model
+    device_info = DeviceInfo(
+        identifiers={(DOMAIN, appliance.id)},
+        name=appliance.nickname,
+        manufacturer=model.manufacturer if model else None,
+        model=(model.name or model.remote_name) if model else None,
+    )
+    if appliance.device_id:
+        device_info["via_device"] = (DOMAIN, appliance.device_id)
     return device_info
 
 
@@ -65,12 +198,23 @@ class NatureRemoDeviceEntity(CoordinatorEntity[NatureRemoCoordinator]):
         super().__init__(coordinator)
         self._device_id = device_id
         device = coordinator.data.devices[device_id]
+        self._last_device = device
         self._attr_device_info = build_remo_device_info(device)
 
     @property
     def device(self) -> Device:
-        """Return the current device data."""
-        return self.coordinator.data.devices[self._device_id]
+        """Return the current device data, or the last one seen.
+
+        A hub can vanish from a poll (removed from the account, or a
+        truncated response) while service calls and state writes still reach
+        the entity; falling back to the last known snapshot keeps those paths
+        from raising a bare KeyError. ``available`` is what reports the hub
+        as gone.
+        """
+        device = self.coordinator.data.devices.get(self._device_id)
+        if device is not None:
+            self._last_device = device
+        return self._last_device
 
     @property
     def available(self) -> bool:
@@ -100,16 +244,7 @@ class NatureRemoApplianceEntity(CoordinatorEntity[NatureRemoCoordinator]):
         self._appliance_id = appliance_id
         appliance = coordinator.data.appliances[appliance_id]
         self._last_appliance = appliance
-        model = appliance.model
-        device_info = DeviceInfo(
-            identifiers={(DOMAIN, appliance_id)},
-            name=appliance.nickname,
-            manufacturer=model.manufacturer if model else None,
-            model=(model.name or model.remote_name) if model else None,
-        )
-        if appliance.device_id:
-            device_info["via_device"] = (DOMAIN, appliance.device_id)
-        self._attr_device_info = device_info
+        self._attr_device_info = build_appliance_device_info(appliance)
 
     @property
     def appliance(self) -> Appliance:
