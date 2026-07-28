@@ -20,15 +20,16 @@ from homeassistant.components.number import (
 )
 from homeassistant.const import EntityCategory, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .const import DOMAIN
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator, NatureRemoData
 from .entity import (
     EntityFactory,
     NatureRemoDeviceEntity,
     async_manage_platform_entities,
-    command_error_message,
+    raise_command_error,
 )
 
 PARALLEL_UPDATES = 1
@@ -142,13 +143,15 @@ class NatureRemoOffsetNumber(NatureRemoDeviceEntity, NumberEntity):
     async def async_set_native_value(self, value: float) -> None:
         """Write the offset and apply the returned device state."""
         if not value.is_integer():
-            raise ServiceValidationError(f"Offset must be a whole number, got {value}")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="offset_not_whole",
+                translation_placeholders={"value": str(value)},
+            )
         try:
             device = await self.entity_description.set_fn(
                 self.coordinator.client, self._device_id, int(value)
             )
         except NatureRemoError as err:
-            raise HomeAssistantError(
-                command_error_message("Failed to update the offset", err)
-            ) from err
+            raise_command_error(self.device.name, err)
         self.coordinator.async_update_device(device)

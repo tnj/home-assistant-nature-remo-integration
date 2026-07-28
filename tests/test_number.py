@@ -68,7 +68,7 @@ async def test_set_temperature_offset_rejects_fractional_value(
     mock_client: AsyncMock,
 ) -> None:
     """A non-integral value is rejected instead of silently rounded."""
-    with pytest.raises(ServiceValidationError):
+    with pytest.raises(ServiceValidationError) as exc_info:
         await hass.services.async_call(
             NUMBER_DOMAIN,
             SERVICE_SET_VALUE,
@@ -78,6 +78,8 @@ async def test_set_temperature_offset_rejects_fractional_value(
             },
             blocking=True,
         )
+    assert exc_info.value.translation_key == "offset_not_whole"
+    assert exc_info.value.translation_placeholders == {"value": "2.5"}
     mock_client.set_temperature_offset.assert_not_called()
 
 
@@ -88,7 +90,7 @@ async def test_set_temperature_offset_failure_raises(
 ) -> None:
     """A failed offset write surfaces as HomeAssistantError, keeping the value."""
     mock_client.set_temperature_offset.side_effect = NatureRemoConnectionError("boom")
-    with pytest.raises(HomeAssistantError, match="Failed to update the offset"):
+    with pytest.raises(HomeAssistantError) as exc_info:
         await hass.services.async_call(
             NUMBER_DOMAIN,
             SERVICE_SET_VALUE,
@@ -98,6 +100,11 @@ async def test_set_temperature_offset_failure_raises(
             },
             blocking=True,
         )
+    assert exc_info.value.translation_key == "command_failed"
+    assert exc_info.value.translation_placeholders == {
+        "name": "Living Remo",
+        "error": "boom",
+    }
     state = hass.states.get("number.living_remo_temperature_offset")
     assert state is not None
     assert state.state == "0.0"  # unchanged; the Remo never stored the offset
