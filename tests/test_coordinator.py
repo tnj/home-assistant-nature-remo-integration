@@ -53,8 +53,9 @@ async def test_auth_error_raises_config_entry_auth_failed(
     """A 401 from the API triggers reauth."""
     mock_client.get_devices.side_effect = NatureRemoAuthError(401, "bad token")
 
-    with pytest.raises(ConfigEntryAuthFailed):
+    with pytest.raises(ConfigEntryAuthFailed) as exc_info:
         await coordinator._async_update_data()
+    assert exc_info.value.translation_key == "auth_failed"
 
 
 async def test_rate_limit_raises_update_failed_with_reset(
@@ -65,8 +66,28 @@ async def test_rate_limit_raises_update_failed_with_reset(
         429, "limited", reset=1752825600
     )
 
-    with pytest.raises(UpdateFailed, match="1752825600"):
+    with pytest.raises(UpdateFailed) as exc_info:
         await coordinator._async_update_data()
+    assert exc_info.value.translation_key == "update_rate_limited"
+    assert exc_info.value.translation_placeholders == {"reset": "1752825600"}
+
+
+async def test_rate_limit_without_reset_raises_update_failed(
+    coordinator: NatureRemoCoordinator, mock_client: AsyncMock
+) -> None:
+    """A 429 with no reset header degrades to a plain update failure.
+
+    "resets at epoch None" must never reach the UI; without a known reset
+    the rate-limit error is just another failed poll.
+    """
+    mock_client.get_appliances.side_effect = NatureRemoRateLimitError(
+        429, "limited", reset=None
+    )
+
+    with pytest.raises(UpdateFailed) as exc_info:
+        await coordinator._async_update_data()
+    assert exc_info.value.translation_key == "update_failed"
+    assert exc_info.value.translation_placeholders == {"error": "HTTP 429: limited"}
 
 
 async def test_connection_error_raises_update_failed(
@@ -75,8 +96,10 @@ async def test_connection_error_raises_update_failed(
     """Network trouble becomes UpdateFailed."""
     mock_client.get_devices.side_effect = NatureRemoConnectionError("refused")
 
-    with pytest.raises(UpdateFailed):
+    with pytest.raises(UpdateFailed) as exc_info:
         await coordinator._async_update_data()
+    assert exc_info.value.translation_key == "update_failed"
+    assert exc_info.value.translation_placeholders == {"error": "refused"}
 
 
 async def test_optimistic_updates(coordinator: NatureRemoCoordinator) -> None:

@@ -134,15 +134,26 @@ class NatureRemoCoordinator(DataUpdateCoordinator[NatureRemoData]):
             appliances = await self.client.get_appliances()
         except NatureRemoAuthError as err:
             raise ConfigEntryAuthFailed(
-                "Access token is invalid or was revoked"
+                translation_domain=DOMAIN,
+                translation_key="auth_failed",
             ) from err
         except NatureRemoRateLimitError as err:
+            if err.reset is not None:
+                raise UpdateFailed(
+                    translation_domain=DOMAIN,
+                    translation_key="update_rate_limited",
+                    translation_placeholders={"reset": str(err.reset)},
+                ) from err
             raise UpdateFailed(
-                f"Nature API rate limit exceeded (resets at epoch {err.reset})"
+                translation_domain=DOMAIN,
+                translation_key="update_failed",
+                translation_placeholders={"error": str(err)},
             ) from err
         except NatureRemoError as err:
             raise UpdateFailed(
-                f"Error communicating with the Nature API: {err}"
+                translation_domain=DOMAIN,
+                translation_key="update_failed",
+                translation_placeholders={"error": str(err)},
             ) from err
         self.poll_count += 1
         return self._merge_pushes_since(
