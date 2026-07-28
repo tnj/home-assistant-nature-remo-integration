@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import replace
+from typing import NoReturn
 
 from aionatureremo import (
     APPLIANCE_TYPE_AC,
@@ -214,6 +215,29 @@ def command_error_message(action: str, err: NatureRemoError) -> str:
     if isinstance(err, NatureRemoRateLimitError) and err.reset is not None:
         message = f"{message} (rate limit resets at epoch {err.reset})"
     return message
+
+
+def raise_command_error(name: str, err: NatureRemoError) -> NoReturn:
+    """Raise a translated command failure, surfacing the rate-limit reset.
+
+    Spec 5.5 requires command failures to include the rate-limit reset epoch
+    when the API returns HTTP 429; other errors keep the plain message.
+    """
+    if isinstance(err, NatureRemoRateLimitError) and err.reset is not None:
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="command_failed_rate_limited",
+            translation_placeholders={
+                "name": name,
+                "error": str(err),
+                "reset": str(err.reset),
+            },
+        ) from err
+    raise HomeAssistantError(
+        translation_domain=DOMAIN,
+        translation_key="command_failed",
+        translation_placeholders={"name": name, "error": str(err)},
+    ) from err
 
 
 class NatureRemoDeviceEntity(CoordinatorEntity[NatureRemoCoordinator]):

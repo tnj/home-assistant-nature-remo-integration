@@ -12,6 +12,13 @@ import re
 from pathlib import Path
 from typing import Any
 
+import pytest
+from aionatureremo import NatureRemoConnectionError, NatureRemoRateLimitError
+from homeassistant.exceptions import HomeAssistantError
+
+from custom_components.nature_remo.const import DOMAIN
+from custom_components.nature_remo.entity import raise_command_error
+
 COMPONENT_DIR = Path(__file__).parent.parent / "custom_components" / "nature_remo"
 
 # key -> placeholder names the raise sites pass. Update together with the
@@ -62,3 +69,37 @@ def test_ja_exceptions_cover_all_keys() -> None:
     assert set(ja_exceptions) == set(exceptions)
     for key, entry in ja_exceptions.items():
         assert _message_placeholders(entry["message"]) == EXCEPTION_LEDGER[key], key
+
+
+def test_raise_command_error_plain() -> None:
+    """A non-429 client error maps to command_failed with name and error."""
+    err = NatureRemoConnectionError("boom")
+    with pytest.raises(HomeAssistantError) as exc_info:
+        raise_command_error("Living AC", err)
+    exc = exc_info.value
+    assert exc.translation_domain == DOMAIN
+    assert exc.translation_key == "command_failed"
+    assert exc.translation_placeholders == {"name": "Living AC", "error": "boom"}
+    assert exc.__cause__ is err
+
+
+def test_raise_command_error_rate_limited() -> None:
+    """A 429 with a known reset maps to the rate-limited key (spec 5.5)."""
+    err = NatureRemoRateLimitError(429, "limited", reset=1752825600)
+    with pytest.raises(HomeAssistantError) as exc_info:
+        raise_command_error("Living AC", err)
+    exc = exc_info.value
+    assert exc.translation_key == "command_failed_rate_limited"
+    assert exc.translation_placeholders == {
+        "name": "Living AC",
+        "error": "HTTP 429: limited",
+        "reset": "1752825600",
+    }
+
+
+def test_raise_command_error_rate_limited_without_reset() -> None:
+    """A 429 whose reset header is missing falls back to the plain key."""
+    err = NatureRemoRateLimitError(429, "limited", reset=None)
+    with pytest.raises(HomeAssistantError) as exc_info:
+        raise_command_error("Living AC", err)
+    assert exc_info.value.translation_key == "command_failed"
