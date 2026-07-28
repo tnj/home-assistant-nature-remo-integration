@@ -418,8 +418,9 @@ class NatureRemoExtraEntity(NatureRemoApplianceEntity):
             appliance = self.coordinator.data.appliances.get(self._appliance_id)
             if appliance is None:
                 raise HomeAssistantError(
-                    f"Failed to update {self.appliance.nickname}: the appliance "
-                    "is no longer reported by the Nature API"
+                    translation_domain=DOMAIN,
+                    translation_key="appliance_missing",
+                    translation_placeholders={"name": self.appliance.nickname},
                 )
             settings = appliance.settings
             new_extra = dict(settings.extra) if settings is not None else {}
@@ -440,9 +441,7 @@ class NatureRemoExtraEntity(NatureRemoApplianceEntity):
                     )
                     new_appliance = replace(appliance, settings=new_settings)
             except NatureRemoError as err:
-                raise HomeAssistantError(
-                    command_error_message(f"Failed to update {appliance.nickname}", err)
-                ) from err
+                raise_command_error(appliance.nickname, err)
             # Apply server truth first so entity state never lies, then verify
             # the echo: a successful write always echoes the extra back
             # (probe-verified), while a write the server silently ignored (the
@@ -456,7 +455,10 @@ class NatureRemoExtraEntity(NatureRemoApplianceEntity):
             )
             if echoed != value:
                 raise HomeAssistantError(
-                    f"Failed to update {appliance.nickname}: the API ignored the "
-                    f"write to '{self._extra_id}' (not available in the current "
-                    "operation mode)"
+                    translation_domain=DOMAIN,
+                    translation_key="extra_write_ignored",
+                    translation_placeholders={
+                        "name": appliance.nickname,
+                        "extra": self._extra_id,
+                    },
                 )
