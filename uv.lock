@@ -1456,6 +1456,8 @@ dev = [
     { name = "aionatureremo" },
     { name = "homeassistant" },
     { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
     { name = "pytest-homeassistant-custom-component" },
     { name = "ruff" },
 ]
@@ -1467,6 +1469,8 @@ dev = [
     { name = "aionatureremo" },
     { name = "homeassistant", specifier = ">=2026.2" },
     { name = "mypy", specifier = ">=1.14.0" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "pytest-cov", specifier = ">=5" },
     { name = "pytest-homeassistant-custom-component", specifier = ">=0.13" },
     { name = "ruff", specifier = ">=0.8.0" },
 ]

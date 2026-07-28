@@ -109,6 +109,19 @@
       "autoclean": {
         "default": "mdi:air-filter"
       }
+    },
+    "select": {
+      "humid": {
+        "default": "mdi:air-humidifier"
+      },
+      "dehumid": {
+        "default": "mdi:air-humidifier-off"
+      }
+    },
+    "time": {
+      "new_sleep": {
+        "default": "mdi:sleep"
+      }
     }
   }
 }

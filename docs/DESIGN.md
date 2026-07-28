@@ -38,12 +38,50 @@ reviewer-facing rationale for Home Assistant core submission lives in
   catalog included); an AC mode change additionally triggers one coordinator
   refresh, because `aircon_settings` returns bare settings while extras
   availability is per-mode.
-- Devices and appliances are added dynamically when they appear and removed
-  from the device registry when they disappear. Remo hubs are eagerly
-  registered in `async_setup_entry` so `via_device` links never dangle
-  (an energy-only Remo E has no entities of its own).
+- **A push that lands mid-poll wins over that poll.** `async_set_updated_data`
+  cancels the scheduled refresh but not one already running, and
+  `_async_refresh` assigns `self.data` from the in-flight fetch
+  unconditionally — so a write completing during the two API calls would be
+  overwritten by the pre-write snapshot and, since the push had rescheduled
+  the next poll, stay reverted for a full interval. `_merge_pushes_since`
+  tags every push with a generation counter and overlays the ones newer than
+  the fetch's start back on top of its result. Ids the fetch stopped
+  reporting are not resurrected, so removal grace still works. Without this,
+  the write lock below would be bypassed: the next writer would rebuild its
+  payload from rolled-back extras and clear the earlier write server-side.
+- Devices, appliances and entities are added dynamically when they appear and
+  removed from the registries when they disappear — every platform drives the
+  same `entity.async_manage_platform_entities` helper, whose `build_entities`
+  callback maps unique_id → factory for everything the current data warrants.
+  Removal candidates come from the entity registry (so orphans from earlier
+  runs are swept too) and only go after `STALE_POLLS_BEFORE_REMOVAL`
+  consecutive *real* polls without the id: one truncated response must not
+  destroy user customizations, and optimistic pushes (which fire the same
+  listeners) are excluded via `coordinator.poll_count`. Every removal — of an
+  entity registry entry or of a device — is logged at INFO with the id and
+  the streak length, because HA core logs entity creation but not removal and
+  a wrongful eviction would otherwise be indistinguishable from an entity
+  that never existed. Platforms whose membership is **value-gated** rather
+  than presence-gated — `sensor` (a device event, or a smart-meter ECHONET
+  property, showing up in that poll) and `number` (same events) — pass a
+  `retain` predicate that keeps ids whose parent hub/appliance is still
+  reported, so an EPC or event dropout can never delete a registry entry;
+  only the parent itself vanishing does. Remo hubs and
+  appliances are registered in `async_setup_entry` and re-registered on every
+  poll, so `via_device` links never dangle (an energy-only Remo E has no
+  entities of its own) and a nickname edited in the Nature app propagates.
 - `PARALLEL_UPDATES = 0` in `sensor.py` (read-only); `= 1` in every command
   platform (serializes writes; protects the rate budget and IR emission).
+- **Device and appliance availability.** `NatureRemoDeviceEntity.available`
+  is `False` once the hub's `online` field is explicitly `False`; `None`
+  (older firmware that never reports the field at all — everything except
+  Nature-2W3, Remo 2.x, and Remo-E-lite) keeps the entity available, since
+  the absence of a signal is not itself a signal. `NatureRemoApplianceEntity`/
+  `NatureRemoDeviceEntity` fall back to
+  the last snapshot seen when their id briefly drops out of a poll (a
+  truncated response, or the grace window before registry removal above),
+  so an in-flight service call or state read never raises a bare `KeyError`
+  — `available` is what reports the id as gone, not an exception.
 
 ## Entity map
 
@@ -70,12 +108,27 @@ reviewer-facing rationale for Home Assistant core submission lives in
   Power-off is **not a mode**: `settings.button == "power-off"` means OFF
   while `settings.mode` keeps the last active mode; turn-on sends
   `button=""`.
+- **A settings write preserves the current power state by default.** Every
+  send goes through `_async_send(button=...)`, and `button` defaults to
+  `None` → the appliance's own `settings.button`; only an explicit mode
+  selection (`set_hvac_mode`, or `set_temperature` with a mode) or
+  `turn_on`/`turn_off` passes the power button explicitly. Before this, any
+  temperature/fan/swing change implicitly powered a powered-off unit back
+  on. Preserving the button on a write that omits it is probe-verified for
+  extras writes (`set_aircon_settings`/`set_floor_heater_settings` called
+  from `entity.py`) and was verified for the climate entity's **full**
+  settings write against real hardware on 2026-07-28 — see "Live
+  verification record" below.
 - `min_temp` / `max_temp` / `target_temperature_step` come from the **union
   of absolute per-mode temperature lists**, because HA validates
   `set_temperature` against entity-level bounds before mode switches.
   Per-mode enforcement happens at send time by snapping to that mode's
-  allowed list. Relative lists (auto, sometimes dry — values with `+`/`-`
-  prefixes or ≤ 0) are excluded from the union.
+  allowed list; a stored value that cannot be snapped to anything in the
+  list (unparseable, or a list with no numeric entries) omits the field
+  entirely rather than inventing one — the cloud restores its own
+  remembered per-mode value when a field is left out (probe-verified).
+  Relative lists (auto, sometimes dry — values with `+`/`-` prefixes or
+  ≤ 0) are excluded from the union.
 - **Relative-offset modes advertise no target temperature**: the feature
   flag is dropped and the attribute is `None` while the current mode's list
   is relative, because HA validates `set_temperature` against the absolute
@@ -90,8 +143,14 @@ reviewer-facing rationale for Home Assistant core submission lives in
   passes the stored `extra` back on every settings send — dropping it would
   silently clear the state on the physical remote. Binary catalog entries
   (`range.extras` with on/off choices) are exposed as CONFIG-category
-  switches; writes send only `button=<current power state>` plus the new
-  extra so nothing else changes.
+  switches; an extras write sends the **full current extras dict merged
+  with the new value** plus the current power button, since any extra
+  omitted from a write is cleared server-side — never just the one changed
+  key. Because both the climate entity and the extras entities can write the
+  same appliance's settings, `coordinator.async_write_lock(appliance_id)`
+  serializes all of them: a write reads the appliance only after acquiring
+  the lock, so it always merges on top of whatever the previous writer just
+  landed instead of racing it and silently reverting the change.
 - **Extra availability is dynamic.** The catalog itself (ids, options,
   descriptions) is static; only each entry's `availability` changes
   (probe-verified on Daikin arc472a82). It is three-valued: `"available"`,
@@ -214,3 +273,33 @@ refresh/set, Local API, OAuth2 (business-only).
   (e.g. `["-5",…,"5"]`); detection treats `+`/`-` prefixes or values ≤ 0 as
   relative. Unsupported `dirh` arrives as `[""]` and empty strings are
   stripped.
+
+## Live verification record (2026-07-28)
+
+Per the mandatory release order in `CLAUDE.md` (implement -> code review ->
+live verification -> release), the two behaviors that were implemented and
+unit-tested ahead of hardware confirmation were verified on 2026-07-28
+against a dev HA instance with a real token:
+
+- **Full climate settings write with `button="power-off"`: VERIFIED.**
+  `climate.set_temperature` (25 -> 26, then 26 -> 25) on a powered-off AC
+  (Mitsubishi-family unit "raibeya aircon", `settings.button == "power-off"`,
+  mode cool) kept `button == "power-off"` in the server response and in a
+  follow-up `GET /1/appliances` both times; `settings.updated_at` advanced to
+  the command time, the temperature stored server-side, the HA entity stayed
+  `off` with the new target, and the physical unit did not power on.
+- **Entity removal grace against the real API: VERIFIED for the orphan
+  sweep.** On the first run after the upgrade, the registry still held two
+  v0.1-era orphaned `select` entities (`..._input` unique_ids no longer
+  produced). Both were removed exactly 3 real polls after startup with the
+  INFO log line naming entity_id, unique_id, and streak; ~100 valid
+  disabled-by-default button entities and live entities were untouched
+  across the session's polls. What remains an *observe-in-production* item
+  (not force-testable on demand): whether any presence-gated catalog
+  (signals, TV buttons, extras) flakes on real hardware for 3+ consecutive
+  polls, and the retained-sensor `unknown` window during a value dropout.
+  Every removal is logged at INFO (`custom_components.nature_remo`), so the
+  ongoing check stays: grep the log for "Removing" and confirm each line
+  names something genuinely deleted in the Nature app. Old `remote.*`
+  registry remnants from v0.1 are outside every current platform's domain
+  and are deliberately not swept (one-time manual cleanup if desired).

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from functools import partial
 from itertools import pairwise
 from typing import Any
 
@@ -21,14 +22,19 @@ from homeassistant.components.climate.const import (
     ClimateEntityFeature,
     HVACMode,
 )
-from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import ATTR_TEMPERATURE, Platform, UnitOfTemperature
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util.unit_conversion import TemperatureConverter
 
-from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
-from .entity import NatureRemoApplianceEntity, command_error_message
+from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator, NatureRemoData
+from .entity import (
+    EntityFactory,
+    NatureRemoApplianceEntity,
+    async_manage_platform_entities,
+    command_error_message,
+)
 
 PARALLEL_UPDATES = 1
 
@@ -56,7 +62,7 @@ def _parse_float(value: str) -> float | None:
 
 
 def _is_relative_temperature_list(values: list[str]) -> bool:
-    """True when a mode's temp list holds relative offsets, not setpoints."""
+    """Return True when a mode's temp list holds relative offsets, not setpoints."""
     for value in values:
         if value.startswith(("+", "-")):
             return True
@@ -66,8 +72,16 @@ def _is_relative_temperature_list(values: list[str]) -> bool:
     return False
 
 
-def _coerce_to_allowed(current: str, allowed: list[str]) -> str:
-    """Keep current if allowed; else snap to the numerically closest value."""
+def _coerce_to_allowed(current: str, allowed: list[str]) -> str | None:
+    """Keep current if allowed; else snap to the numerically closest value.
+
+    None when there is nothing to snap to — current is neither in the list
+    nor numerically comparable to it (an empty stored value, or a list
+    without a single numeric entry). Callers omit the field entirely then
+    instead of inventing a value. Explicit user input is always parseable
+    (temperature arrives as str(float), fan/swing values are pre-validated
+    against the current mode's list), so this only ever drops stored values.
+    """
     if current in allowed:
         return current
     target = _parse_float(current)
@@ -84,7 +98,15 @@ def _coerce_to_allowed(current: str, allowed: list[str]) -> str:
                 best_distance = distance
         if best is not None:
             return best
-    return allowed[0]
+    return None
+
+
+def _put_coerced(
+    payload: dict[str, str], key: str, current: str, allowed: list[str]
+) -> None:
+    """Add the coerced value to the payload, omitting unmatchable ones."""
+    if (value := _coerce_to_allowed(current, allowed)) is not None:
+        payload[key] = value
 
 
 async def async_setup_entry(
@@ -94,30 +116,31 @@ async def async_setup_entry(
 ) -> None:
     """Set up climate entities for AC and floor heater appliances."""
     coordinator = entry.runtime_data
-    known: set[str] = set()
 
-    @callback
-    def _sync_entities() -> None:
-        new_entities: list[NatureRemoClimate] = []
-        for appliance_id, appliance in coordinator.data.appliances.items():
-            if appliance_id in known:
-                continue
+    def _build_entities(data: NatureRemoData) -> dict[str, EntityFactory]:
+        # The unique_id of a climate entity is the bare appliance id.
+        entities: dict[str, EntityFactory] = {}
+        for appliance_id, appliance in data.appliances.items():
             if appliance.type == APPLIANCE_TYPE_AC and appliance.aircon is not None:
-                known.add(appliance_id)
-                new_entities.append(NatureRemoClimate(coordinator, appliance_id))
+                entities[appliance_id] = partial(
+                    NatureRemoClimate, coordinator, appliance_id
+                )
             elif (
                 appliance.type == APPLIANCE_TYPE_FLOOR_HEATER
                 and appliance.floor_heater is not None
             ):
-                known.add(appliance_id)
-                new_entities.append(
-                    NatureRemoFloorHeaterClimate(coordinator, appliance_id)
+                entities[appliance_id] = partial(
+                    NatureRemoFloorHeaterClimate, coordinator, appliance_id
                 )
-        if new_entities:
-            async_add_entities(new_entities)
+        return entities
 
-    _sync_entities()
-    entry.async_on_unload(coordinator.async_add_listener(_sync_entities))
+    async_manage_platform_entities(
+        hass,
+        entry,
+        async_add_entities,
+        domain=Platform.CLIMATE,
+        build_entities=_build_entities,
+    )
 
 
 class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
@@ -240,8 +263,10 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
     @property
     def target_temperature_step(self) -> float | None:
         """Smallest gap between allowed temperatures."""
+        # _absolute_temperatures returns a sorted set, so every pair ascends
+        # and every gap is positive.
         values = self._absolute_temperatures()
-        steps = [second - first for first, second in pairwise(values) if second > first]
+        steps = [second - first for first, second in pairwise(values)]
         return min(steps) if steps else 1.0
 
     @property
@@ -330,14 +355,6 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
             return None
         return list(mode_range.directions_h)
 
-    @property
-    def extra_state_attributes(self) -> dict[str, str] | None:
-        """Expose remote-side extra parameters (e.g. autoclean)."""
-        settings = self.appliance.settings
-        if settings is None or not settings.extra:
-            return None
-        return dict(settings.extra)
-
     async def _async_send(
         self,
         *,
@@ -346,63 +363,93 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
         air_volume: str | None = None,
         air_direction: str | None = None,
         air_direction_h: str | None = None,
-        button: str = POWER_ON_BUTTON,
+        button: str | None = None,
     ) -> None:
-        """Send the full current settings with the requested overrides."""
-        appliance = self.appliance
-        settings = appliance.settings
-        capability = self._capability
-        mode = operation_mode or (settings.mode if settings else "")
-        payload: dict[str, str] = {"button": button}
-        if mode:
-            payload["operation_mode"] = mode
-            mode_range = capability.modes.get(mode) if capability else None
-            if mode_range is not None:
-                current_temp = settings.temperature if settings else ""
-                current_vol = settings.volume if settings else ""
-                current_dir = settings.direction if settings else ""
-                current_dirh = settings.direction_h if settings else ""
-                # Relative-offset modes get no temperature field at all: the
-                # stored value may be on the other scale (warm "25" would
-                # coerce to offset "+2"), and the cloud restores its own
-                # remembered per-mode value when the field is omitted
-                # (probe-verified).
-                if mode_range.temperatures and not _is_relative_temperature_list(
-                    mode_range.temperatures
-                ):
-                    payload["temperature"] = _coerce_to_allowed(
-                        temperature if temperature is not None else current_temp,
-                        mode_range.temperatures,
-                    )
-                if mode_range.volumes:
-                    payload["air_volume"] = _coerce_to_allowed(
-                        air_volume if air_volume is not None else current_vol,
-                        mode_range.volumes,
-                    )
-                if mode_range.directions:
-                    payload["air_direction"] = _coerce_to_allowed(
-                        air_direction if air_direction is not None else current_dir,
-                        mode_range.directions,
-                    )
-                if mode_range.directions_h:
-                    payload["air_direction_h"] = _coerce_to_allowed(
-                        air_direction_h
-                        if air_direction_h is not None
-                        else current_dirh,
-                        mode_range.directions_h,
-                    )
-        # settings.extra is remote-side state (e.g. Daikin autoclean) that the
-        # physical remote bakes into every transmitted frame — pass it back on
-        # every send or the state would be silently dropped.
-        extra = (
-            dict(settings.extra) if settings is not None and settings.extra else None
-        )
-        try:
-            await self._async_write_settings(extra=extra, payload=payload)
-        except NatureRemoError as err:
-            raise HomeAssistantError(
-                command_error_message(f"Failed to update {appliance.nickname}", err)
-            ) from err
+        """Send the full current settings with the requested overrides.
+
+        ``button`` defaults to the appliance's current power button, so a
+        temperature/fan/swing change leaves a powered-off unit off; callers
+        that mean "power on" pass POWER_ON_BUTTON explicitly.
+        """
+        async with self.coordinator.async_write_lock(self._appliance_id):
+            # Read the appliance only after the lock: a settings write from
+            # another platform (the extras switch/select/time entities) may
+            # have landed while waiting, and this payload must be built on
+            # top of it — settings.extra above all, since extras omitted
+            # from a write are cleared server-side.
+            appliance = self.appliance
+            settings = appliance.settings
+            capability = self._capability
+            if button is None:
+                # settings.button is "" while the unit runs and "power-off"
+                # while it is off. Extras writes (entity.py) preserve it the
+                # same way, which is probe-verified for those; on a full
+                # settings write this relies on the API honoring the button
+                # field we send back.
+                button = settings.button if settings else POWER_ON_BUTTON
+            mode = operation_mode or (settings.mode if settings else "")
+            payload: dict[str, str] = {"button": button}
+            if mode:
+                payload["operation_mode"] = mode
+                mode_range = capability.modes.get(mode) if capability else None
+                if mode_range is not None:
+                    current_temp = settings.temperature if settings else ""
+                    current_vol = settings.volume if settings else ""
+                    current_dir = settings.direction if settings else ""
+                    current_dirh = settings.direction_h if settings else ""
+                    # Fields the mode cannot express are left out entirely,
+                    # as are stored values nothing in the list can be snapped
+                    # to: the cloud restores its own remembered per-mode value
+                    # when a field is omitted (probe-verified). Relative-offset
+                    # modes therefore get no temperature at all — the stored
+                    # value may be on the other scale (warm "25" would coerce
+                    # to offset "+2").
+                    if mode_range.temperatures and not _is_relative_temperature_list(
+                        mode_range.temperatures
+                    ):
+                        _put_coerced(
+                            payload,
+                            "temperature",
+                            temperature if temperature is not None else current_temp,
+                            mode_range.temperatures,
+                        )
+                    if mode_range.volumes:
+                        _put_coerced(
+                            payload,
+                            "air_volume",
+                            air_volume if air_volume is not None else current_vol,
+                            mode_range.volumes,
+                        )
+                    if mode_range.directions:
+                        _put_coerced(
+                            payload,
+                            "air_direction",
+                            air_direction if air_direction is not None else current_dir,
+                            mode_range.directions,
+                        )
+                    if mode_range.directions_h:
+                        _put_coerced(
+                            payload,
+                            "air_direction_h",
+                            air_direction_h
+                            if air_direction_h is not None
+                            else current_dirh,
+                            mode_range.directions_h,
+                        )
+            # settings.extra is remote-side state (e.g. Daikin autoclean) that
+            # the physical remote bakes into every transmitted frame — pass it
+            # back on every send or the state would be silently dropped.
+            extra = (
+                dict(settings.extra)
+                if settings is not None and settings.extra
+                else None
+            )
+            try:
+                await self._async_write_settings(extra=extra, payload=payload)
+            except NatureRemoError as err:
+                raise HomeAssistantError(
+                    command_error_message(f"Failed to update {appliance.nickname}", err)
+                ) from err
 
     async def _async_write_settings(
         self, *, extra: dict[str, str] | None, payload: dict[str, str]
@@ -428,11 +475,12 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
             # appliance, so the subclass needs no refresh.)
             await self.coordinator.async_request_refresh()
 
-    async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
-        """Set the HVAC mode; OFF maps to the power-off button."""
-        if hvac_mode == HVACMode.OFF:
-            await self._async_send(button=POWER_OFF_BUTTON)
-            return
+    def _nature_mode_or_raise(self, hvac_mode: HVACMode) -> str:
+        """Map an HA mode to its Nature name, rejecting unsupported ones.
+
+        Shared by set_hvac_mode and set_temperature so both reject the same
+        modes; HA core only validates hvac_mode for the former.
+        """
         nature_mode = HVAC_TO_NATURE.get(hvac_mode)
         capability = self._capability
         if (
@@ -441,46 +489,64 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
             or nature_mode not in capability.modes
         ):
             raise ServiceValidationError(f"Unsupported HVAC mode: {hvac_mode}")
-        await self._async_send(operation_mode=nature_mode)
+        return nature_mode
+
+    async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
+        """Set the HVAC mode; OFF maps to the power-off button."""
+        if hvac_mode == HVACMode.OFF:
+            await self._async_send(button=POWER_OFF_BUTTON)
+            return
+        # Selecting an active mode means "power on" in HA.
+        await self._async_send(
+            operation_mode=self._nature_mode_or_raise(hvac_mode),
+            button=POWER_ON_BUTTON,
+        )
 
     async def async_turn_on(self) -> None:
         """Power on, restoring the last settings."""
-        await self._async_send()
+        await self._async_send(button=POWER_ON_BUTTON)
 
     async def async_turn_off(self) -> None:
         """Power off, keeping the settings for the next power-on."""
         await self._async_send(button=POWER_OFF_BUTTON)
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
-        """Set the target temperature (optionally with a mode change)."""
+        """Set the target temperature (optionally with a mode change).
+
+        A mode change powers the appliance on; a temperature-only call keeps
+        the current power state.
+        """
         operation_mode: str | None = None
+        button: str | None = None
         if (hvac_mode := kwargs.get(ATTR_HVAC_MODE)) is not None:
             if hvac_mode == HVACMode.OFF:
                 await self._async_send(button=POWER_OFF_BUTTON)
                 return
-            operation_mode = HVAC_TO_NATURE.get(hvac_mode)
+            operation_mode = self._nature_mode_or_raise(hvac_mode)
+            button = POWER_ON_BUTTON
         temperature = kwargs.get(ATTR_TEMPERATURE)
         await self._async_send(
             operation_mode=operation_mode,
             temperature=None if temperature is None else str(temperature),
+            button=button,
         )
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
-        """Set the air volume."""
+        """Set the air volume, keeping the current power state."""
         mode_range = self._mode_range
         if mode_range is None or fan_mode not in mode_range.volumes:
             raise ServiceValidationError(f"Unsupported fan mode: {fan_mode}")
         await self._async_send(air_volume=fan_mode)
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
-        """Set the vertical airflow direction."""
+        """Set the vertical airflow direction, keeping the power state."""
         mode_range = self._mode_range
         if mode_range is None or swing_mode not in mode_range.directions:
             raise ServiceValidationError(f"Unsupported swing mode: {swing_mode}")
         await self._async_send(air_direction=swing_mode)
 
     async def async_set_swing_horizontal_mode(self, swing_horizontal_mode: str) -> None:
-        """Set the horizontal airflow direction."""
+        """Set the horizontal airflow direction, keeping the power state."""
         mode_range = self._mode_range
         if mode_range is None or swing_horizontal_mode not in mode_range.directions_h:
             raise ServiceValidationError(

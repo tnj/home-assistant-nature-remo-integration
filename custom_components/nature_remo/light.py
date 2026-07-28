@@ -3,17 +3,24 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from functools import partial
 from typing import Any
 
 from aionatureremo import APPLIANCE_TYPE_LIGHT, NatureRemoError
 from homeassistant.components.light import LightEntity
 from homeassistant.components.light.const import ColorMode
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
-from .entity import NatureRemoApplianceEntity, command_error_message
+from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator, NatureRemoData
+from .entity import (
+    EntityFactory,
+    NatureRemoApplianceEntity,
+    async_manage_platform_entities,
+    command_error_message,
+)
 
 PARALLEL_UPDATES = 1
 
@@ -29,25 +36,22 @@ async def async_setup_entry(
 ) -> None:
     """Set up light entities for LIGHT appliances."""
     coordinator = entry.runtime_data
-    known: set[str] = set()
 
-    @callback
-    def _sync_entities() -> None:
-        new_entities: list[NatureRemoLight] = []
-        for appliance_id, appliance in coordinator.data.appliances.items():
-            if (
-                appliance.type != APPLIANCE_TYPE_LIGHT
-                or appliance.light is None
-                or appliance_id in known
-            ):
-                continue
-            known.add(appliance_id)
-            new_entities.append(NatureRemoLight(coordinator, appliance_id))
-        if new_entities:
-            async_add_entities(new_entities)
+    def _build_entities(data: NatureRemoData) -> dict[str, EntityFactory]:
+        # The unique_id of a light entity is the bare appliance id.
+        return {
+            appliance_id: partial(NatureRemoLight, coordinator, appliance_id)
+            for appliance_id, appliance in data.appliances.items()
+            if appliance.type == APPLIANCE_TYPE_LIGHT and appliance.light is not None
+        }
 
-    _sync_entities()
-    entry.async_on_unload(coordinator.async_add_listener(_sync_entities))
+    async_manage_platform_entities(
+        hass,
+        entry,
+        async_add_entities,
+        domain=Platform.LIGHT,
+        build_entities=_build_entities,
+    )
 
 
 class NatureRemoLight(NatureRemoApplianceEntity, LightEntity):

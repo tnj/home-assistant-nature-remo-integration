@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from functools import partial
 
 from aionatureremo import (
     APPLIANCE_TYPE_SMART_METER,
@@ -21,13 +22,24 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower, UnitOfTemperature
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import (
+    PERCENTAGE,
+    Platform,
+    UnitOfEnergy,
+    UnitOfPower,
+    UnitOfTemperature,
+)
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
-from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
-from .entity import NatureRemoApplianceEntity, NatureRemoDeviceEntity
+from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator, NatureRemoData
+from .entity import (
+    EntityFactory,
+    NatureRemoApplianceEntity,
+    NatureRemoDeviceEntity,
+    async_manage_platform_entities,
+)
 
 PARALLEL_UPDATES = 0
 
@@ -72,6 +84,10 @@ DEVICE_SENSORS: tuple[NatureRemoDeviceSensorDescription, ...] = (
         value_fn=lambda device: _event_value(device, EVENT_HUMIDITY),
     ),
     NatureRemoDeviceSensorDescription(
+        # Deliberately no device_class and no native_unit_of_measurement:
+        # Nature reports an uncalibrated relative illumination value, not
+        # lux, so ILLUMINANCE + lx would assert a unit the hardware does
+        # not provide.
         key="illuminance",
         event_key=EVENT_ILLUMINATION,
         translation_key="illuminance",
@@ -129,44 +145,66 @@ async def async_setup_entry(
 ) -> None:
     """Set up sensors, adding new ones as they appear."""
     coordinator = entry.runtime_data
-    known: set[str] = set()
 
-    @callback
-    def _sync_entities() -> None:
-        new_entities: list[SensorEntity] = []
-        for device_id, device in coordinator.data.devices.items():
+    def _build_entities(data: NatureRemoData) -> dict[str, EntityFactory]:
+        entities: dict[str, EntityFactory] = {}
+        # A Remo only gets the sensors matching the events it reports.
+        for device_id, device in data.devices.items():
             for description in DEVICE_SENSORS:
-                unique_id = f"{device_id}_{description.key}"
-                if unique_id in known or description.event_key not in device.events:
+                if description.event_key not in device.events:
                     continue
-                known.add(unique_id)
-                new_entities.append(
-                    NatureRemoDeviceSensor(coordinator, device_id, description)
+                entities[f"{device_id}_{description.key}"] = partial(
+                    NatureRemoDeviceSensor, coordinator, device_id, description
                 )
-        for appliance_id, appliance in coordinator.data.appliances.items():
+        # Smart meters only get the ECHONET properties they publish.
+        for appliance_id, appliance in data.appliances.items():
             if (
                 appliance.type != APPLIANCE_TYPE_SMART_METER
                 or appliance.smart_meter is None
             ):
                 continue
             for meter_description in SMART_METER_SENSORS:
-                unique_id = f"{appliance_id}_{meter_description.key}"
-                if (
-                    unique_id in known
-                    or meter_description.value_fn(appliance.smart_meter) is None
-                ):
+                if meter_description.value_fn(appliance.smart_meter) is None:
                     continue
-                known.add(unique_id)
-                new_entities.append(
-                    NatureRemoSmartMeterSensor(
-                        coordinator, appliance_id, meter_description
-                    )
+                entities[f"{appliance_id}_{meter_description.key}"] = partial(
+                    NatureRemoSmartMeterSensor,
+                    coordinator,
+                    appliance_id,
+                    meter_description,
                 )
-        if new_entities:
-            async_add_entities(new_entities)
+        return entities
 
-    _sync_entities()
-    entry.async_on_unload(coordinator.async_add_listener(_sync_entities))
+    def _retain(data: NatureRemoData, unique_id: str) -> bool:
+        """Keep a sensor whose parent is here but whose reading dropped out.
+
+        Membership above is value-gated: a device sensor needs its event in
+        this poll's payload and a smart-meter sensor needs its ECHONET
+        property (EPC 225 alone missing nils both cumulative sensors). A
+        transient dropout — hub reboot, meter pairing hiccup, cloud-side
+        omission — would otherwise look exactly like deletion and, after the
+        grace period, delete the registry entry along with the customizations
+        and energy-dashboard linkage attached to it. Only the hub or the
+        appliance itself disappearing means the entity is really gone.
+        """
+        return any(
+            unique_id == f"{device_id}_{description.key}"
+            for device_id in data.devices
+            for description in DEVICE_SENSORS
+        ) or any(
+            unique_id == f"{appliance_id}_{meter_description.key}"
+            for appliance_id, appliance in data.appliances.items()
+            if appliance.type == APPLIANCE_TYPE_SMART_METER
+            for meter_description in SMART_METER_SENSORS
+        )
+
+    async_manage_platform_entities(
+        hass,
+        entry,
+        async_add_entities,
+        domain=Platform.SENSOR,
+        build_entities=_build_entities,
+        retain=_retain,
+    )
 
 
 class NatureRemoDeviceSensor(NatureRemoDeviceEntity, SensorEntity):

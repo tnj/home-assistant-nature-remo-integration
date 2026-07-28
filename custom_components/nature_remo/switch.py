@@ -2,20 +2,27 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Any
 
 from aionatureremo import AirconExtra
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
-from .entity import NatureRemoExtraEntity, extras_catalog
+from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator, NatureRemoData
+from .entity import (
+    EntityFactory,
+    NatureRemoExtraEntity,
+    async_manage_platform_entities,
+    extra_platform,
+    extras_catalog,
+)
 
 PARALLEL_UPDATES = 1
 
 KNOWN_EXTRA_TRANSLATION_KEYS = {"autoclean": "autoclean"}
-_ON_OFF = {"on", "off"}
 
 
 async def async_setup_entry(
@@ -25,39 +32,27 @@ async def async_setup_entry(
 ) -> None:
     """Set up switches for binary AC / floor heater extra parameters."""
     coordinator = entry.runtime_data
-    known: set[str] = set()
 
-    @callback
-    def _sync_entities() -> None:
-        new_entities: list[NatureRemoACExtraSwitch] = []
-        for appliance_id, appliance in coordinator.data.appliances.items():
-            for extra in extras_catalog(appliance):
-                # Only binary on/off extras map onto a switch; multi-option
-                # "choice" extras become selects and "time" extras become
-                # time entities. An empty options list yields an empty set
-                # here, which simply fails the comparison. availability is
-                # NOT checked: the catalog is static across operation modes
-                # and only each entry's availability flips with the current
-                # mode (probe-verified), so every binary extra gets an
-                # entity and the entity's `available` property tracks the
-                # flips.
-                if (
-                    extra.type != "choice"
-                    or {option.value for option in extra.options} != _ON_OFF
-                ):
-                    continue
-                unique_id = f"{appliance_id}_extra_{extra.id}"
-                if unique_id in known:
-                    continue
-                known.add(unique_id)
-                new_entities.append(
-                    NatureRemoACExtraSwitch(coordinator, appliance_id, extra)
-                )
-        if new_entities:
-            async_add_entities(new_entities)
+    def _build_entities(data: NatureRemoData) -> dict[str, EntityFactory]:
+        # Only binary on/off extras map onto a switch; see
+        # entity.extra_platform for the shared classification (and why
+        # availability plays no part in it).
+        return {
+            f"{appliance_id}_extra_{extra.id}": partial(
+                NatureRemoACExtraSwitch, coordinator, appliance_id, extra
+            )
+            for appliance_id, appliance in data.appliances.items()
+            for extra in extras_catalog(appliance)
+            if extra_platform(extra) is Platform.SWITCH
+        }
 
-    _sync_entities()
-    entry.async_on_unload(coordinator.async_add_listener(_sync_entities))
+    async_manage_platform_entities(
+        hass,
+        entry,
+        async_add_entities,
+        domain=Platform.SWITCH,
+        build_entities=_build_entities,
+    )
 
 
 class NatureRemoACExtraSwitch(NatureRemoExtraEntity, SwitchEntity):

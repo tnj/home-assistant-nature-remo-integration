@@ -19,6 +19,7 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.nature_remo.const import DOMAIN
+from tests.conftest import async_poll
 
 
 async def test_ir_signal_buttons(
@@ -36,6 +37,44 @@ async def test_ir_signal_buttons(
         blocking=True,
     )
     mock_client.send_signal.assert_called_once_with("signal-1")
+
+
+async def test_signal_rename_follows_the_api(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """Renaming a signal in the Nature app renames the button on the next poll.
+
+    Signal names are free text the user typed (unlike the catalog-defined
+    TV / light / projector / AC button names), so the entity must not freeze
+    the name it was created with. The entity_id stays put — only the
+    displayed name follows.
+    """
+    state = hass.states.get("button.fan_power")
+    assert state is not None
+    assert state.attributes["friendly_name"] == "Fan Power"
+
+    mock_client.get_appliances.return_value = [
+        replace(
+            appliance,
+            signals=[
+                replace(signal, name="Main power")
+                if signal.id == "signal-1"
+                else signal
+                for signal in appliance.signals
+            ],
+        )
+        if appliance.id == "appliance-ir-1"
+        else appliance
+        for appliance in appliances
+    ]
+    await async_poll(hass)
+
+    state = hass.states.get("button.fan_power")
+    assert state is not None
+    assert state.attributes["friendly_name"] == "Fan Main power"
 
 
 async def test_light_extra_buttons(
@@ -103,6 +142,39 @@ async def test_light_button_failure_raises(
     with pytest.raises(HomeAssistantError, match="Bedroom Light"):
         await hass.services.async_call(
             BUTTON_DOMAIN, SERVICE_PRESS, {ATTR_ENTITY_ID: night_entity}, blocking=True
+        )
+
+
+@pytest.mark.parametrize(
+    ("unique_id", "client_method", "nickname"),
+    [
+        ("appliance-tv-1_button_vol-up", "send_tv_button", "Living TV"),
+        ("appliance-projector-1_button_io", "send_light_projector_button", "Projector"),
+        ("appliance-ac-1_button_airdir-swing", "set_aircon_settings", "Living AC"),
+    ],
+)
+async def test_button_press_failure_raises(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    unique_id: str,
+    client_method: str,
+    nickname: str,
+) -> None:
+    """Every button flavour converts an API error into HomeAssistantError.
+
+    TV buttons, light projector buttons and AC fixed buttons each call a
+    different endpoint, so each needs its own conversion — an unconverted
+    NatureRemoError would surface to the user as an unknown crash.
+    """
+    entity_registry = er.async_get(hass)
+    entity_id = entity_registry.async_get_entity_id(BUTTON_DOMAIN, DOMAIN, unique_id)
+    assert entity_id is not None
+    getattr(mock_client, client_method).side_effect = NatureRemoConnectionError("boom")
+
+    with pytest.raises(HomeAssistantError, match=f"Failed to control {nickname}"):
+        await hass.services.async_call(
+            BUTTON_DOMAIN, SERVICE_PRESS, {ATTR_ENTITY_ID: entity_id}, blocking=True
         )
 
 
@@ -383,3 +455,37 @@ async def test_ac_fixed_buttons(
     mock_client.set_aircon_settings.assert_called_once_with(
         "appliance-ac-1", button="airdir-swing"
     )
+
+
+async def test_ac_fixed_button_unknown_name_uses_name(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """An AC fixed button outside the vocabulary falls back to its name."""
+    mock_client.get_appliances.return_value = [
+        replace(
+            appliance,
+            aircon=replace(
+                appliance.aircon,
+                fixed_buttons=[*appliance.aircon.fixed_buttons, "eco"],
+            ),
+        )
+        if appliance.id == "appliance-ac-1"
+        else appliance
+        for appliance in appliances
+    ]
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_registry = er.async_get(hass)
+    entity_id = entity_registry.async_get_entity_id(
+        BUTTON_DOMAIN, DOMAIN, "appliance-ac-1_button_eco"
+    )
+    assert entity_id is not None
+    entry = entity_registry.async_get(entity_id)
+    assert entry is not None
+    assert entry.translation_key is None
+    assert entry.original_name == "eco"

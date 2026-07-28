@@ -53,22 +53,60 @@ via trusted publishing; then bump the pin here.
   `entity_registry_enabled_default = False`.
 - **`settings.extra` is remote-side state** (e.g. Daikin `autoclean`) baked
   into every transmitted IR frame. The climate entity passes it back on
-  every settings send (dropping it silently clears the state); writes send
-  only `button=<current>` + the new extra so nothing else changes. Every
+  every settings send (dropping it silently clears the state); an extras
+  write sends the **full current extras dict merged with the new value**
+  plus the current power button — extras omitted from a write are cleared
+  server-side, so a partial dict would silently wipe the others. Every
   `range.extras` entry becomes a CONFIG-category entity — binary on/off →
   `switch`, multi-option choice → `select` (raw API option values), type
   `time` → `time` (HH:MM wire format) — **regardless of current
   availability**: availability flips per operation mode and hidden writes
   are silently ignored, so each entity tracks `availability == "available"`
   on every poll and verifies the write's response echo. All three share
-  `NatureRemoExtraEntity` in `entity.py`.
+  `NatureRemoExtraEntity` in `entity.py`; classification is centralized in
+  `entity.extra_platform()`.
 - **Fujitsu `airdir-swing`/`airdir-tilt` are one-shot** (probe-verified: no
   trace anywhere in the API after sending) → they stay press buttons.
 - Climate min/max/step come from the **union of absolute mode temperature
   lists** (HA validates set_temperature before mode switches); per-mode
-  enforcement happens at send time by snapping to the allowed list.
-- Remo hub devices are **eagerly registered** in `async_setup_entry` so
-  `via_device` links never dangle (energy-only Remo E has no entities).
+  enforcement happens at send time by snapping to the allowed list;
+  unparseable stored values omit the field entirely rather than snapping to
+  something invented (the cloud restores its remembered per-mode value,
+  probe-verified).
+- Remo hub **and appliance** devices are **eagerly registered** in
+  `async_setup_entry` so `via_device` links never dangle (energy-only Remo E
+  has no entities); appliance devices are additionally re-registered on
+  every poll (shared `build_appliance_device_info`) so a nickname edited in
+  the Nature app propagates to the device registry.
+- **Settings writes are serialized per appliance**
+  (`coordinator.async_write_lock`): every payload embeds the full extras
+  dict, so a climate write and an extras write racing on the same appliance
+  would otherwise silently revert each other. The lock only orders writers,
+  so the coordinator additionally re-applies pushes that landed **during** a
+  poll's fetch (`_merge_pushes_since`, generation-tagged): HA assigns
+  `self.data` from the in-flight fetch unconditionally, and a rolled-back
+  snapshot would feed the next writer's payload and undo the write
+  server-side.
+- **Climate writes preserve the stored power button by default**
+  (`button=None` → the appliance's current `settings.button`), so a
+  temperature/fan/swing change no longer implicitly powers a unit back on.
+  This is probe-verified for extras writes and live-verified for full
+  climate settings writes (2026-07-28: temperature changes on a powered-off
+  AC kept `button="power-off"` server-side; the unit stayed off).
+- **Dynamic entity add/remove is one shared helper**
+  (`entity.async_manage_platform_entities`) used by every platform: an id
+  missing from `STALE_POLLS_BEFORE_REMOVAL` (3) consecutive **real** polls
+  is removed from the entity registry; `coordinator.poll_count` lets the
+  tracker tell a real poll from an optimistic command-response push so
+  in-flight commands never advance the miss counter. Value-gated platforms
+  (`sensor`/`number`, whose ids exist only while the event or ECHONET
+  property is in that poll) pass a `retain` predicate so a reading dropout
+  never removes anything — only the parent hub/appliance disappearing does.
+  Every entity and device removal is logged at INFO: HA core logs entity
+  creation but not removal, and a wrongful eviction must be greppable.
+- **`device.online is not False` gates device-entity availability** — `None`
+  (older firmware, which never reports the field) stays available; only an
+  explicit `False` marks the hub unreachable.
 
 ## Nature Cloud API facts (verified against real hardware)
 

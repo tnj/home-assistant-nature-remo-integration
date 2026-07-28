@@ -26,22 +26,21 @@ class NatureRemoConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
     MINOR_VERSION = 1
 
-    async def _async_validate(self, token: str, errors: dict[str, str]) -> User | None:
-        """Validate the token, filling errors on failure."""
+    async def _async_validate(self, token: str) -> tuple[User | None, str | None]:
+        """Validate the token, returning the user or an error code."""
         client = NatureRemoClient(token, async_get_clientsession(self.hass))
         try:
-            return await client.get_user()
+            return await client.get_user(), None
         except NatureRemoAuthError:
-            errors["base"] = "invalid_auth"
+            return None, "invalid_auth"
         except NatureRemoError as err:
             # cannot_connect covers 429s and transient network trouble; keep a
             # trace so the cause is diagnosable from the log.
             _LOGGER.debug("Token validation failed: %s", err)
-            errors["base"] = "cannot_connect"
+            return None, "cannot_connect"
         except Exception:
             _LOGGER.exception("Unexpected error validating the access token")
-            errors["base"] = "unknown"
-        return None
+            return None, "unknown"
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -49,11 +48,13 @@ class NatureRemoConfigFlow(ConfigFlow, domain=DOMAIN):
         """Ask for the personal access token."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            user = await self._async_validate(user_input[CONF_API_TOKEN], errors)
+            user, error_code = await self._async_validate(user_input[CONF_API_TOKEN])
             if user is not None:
                 await self.async_set_unique_id(user.id)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(title=user.nickname, data=user_input)
+            if error_code is not None:
+                errors["base"] = error_code
         return self.async_show_form(
             step_id="user",
             data_schema=STEP_TOKEN_DATA_SCHEMA,
@@ -73,13 +74,15 @@ class NatureRemoConfigFlow(ConfigFlow, domain=DOMAIN):
         """Ask for a replacement token for the same account."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            user = await self._async_validate(user_input[CONF_API_TOKEN], errors)
+            user, error_code = await self._async_validate(user_input[CONF_API_TOKEN])
             if user is not None:
                 await self.async_set_unique_id(user.id)
                 self._abort_if_unique_id_mismatch(reason="wrong_account")
                 return self.async_update_reload_and_abort(
                     self._get_reauth_entry(), data_updates=user_input
                 )
+            if error_code is not None:
+                errors["base"] = error_code
         return self.async_show_form(
             step_id="reauth_confirm",
             data_schema=STEP_TOKEN_DATA_SCHEMA,
@@ -93,13 +96,15 @@ class NatureRemoConfigFlow(ConfigFlow, domain=DOMAIN):
         """Let the user replace the token from the UI."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            user = await self._async_validate(user_input[CONF_API_TOKEN], errors)
+            user, error_code = await self._async_validate(user_input[CONF_API_TOKEN])
             if user is not None:
                 await self.async_set_unique_id(user.id)
                 self._abort_if_unique_id_mismatch(reason="wrong_account")
                 return self.async_update_reload_and_abort(
                     self._get_reconfigure_entry(), data_updates=user_input
                 )
+            if error_code is not None:
+                errors["base"] = error_code
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=STEP_TOKEN_DATA_SCHEMA,

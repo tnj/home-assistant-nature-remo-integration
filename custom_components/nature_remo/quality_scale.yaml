@@ -8,7 +8,7 @@ rules:
   common-modules: done
   config-flow: done
   config-flow-test-coverage: done
-  dependency-transparency: todo # pending the first PyPI release of aionatureremo
+  dependency-transparency: done
   docs-actions:
     status: exempt
     comment: The integration does not register custom service actions.
@@ -40,7 +40,11 @@ rules:
   diagnostics: done
   discovery:
     status: exempt
-    comment: Cloud-polling service; devices are not discoverable on the local network.
+    comment: >-
+      Integration is cloud-API-only; setup needs a Nature account token that
+      no local-network discovery signal could supply, so a
+      discovery-triggered flow would still just prompt for the same token.
+      Possible future enhancement.
   discovery-update-info:
     status: exempt
     comment: No discovery.

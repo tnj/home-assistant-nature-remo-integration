@@ -1,10 +1,12 @@
 """Tests for the Nature Remo coordinator."""
 
+import asyncio
 from dataclasses import replace
 from unittest.mock import AsyncMock
 
 import pytest
 from aionatureremo import (
+    Appliance,
     NatureRemoAuthError,
     NatureRemoConnectionError,
     NatureRemoRateLimitError,
@@ -23,7 +25,7 @@ def coordinator(
     mock_config_entry: MockConfigEntry,
     mock_client: AsyncMock,
 ) -> NatureRemoCoordinator:
-    """A coordinator wired to the mocked client."""
+    """Build a coordinator wired to the mocked client."""
     mock_config_entry.add_to_hass(hass)
     return NatureRemoCoordinator(hass, mock_config_entry, mock_client)
 
@@ -90,3 +92,111 @@ async def test_optimistic_updates(coordinator: NatureRemoCoordinator) -> None:
     device = replace(coordinator.data.devices["device-remo3-1"], name="Renamed Remo")
     coordinator.async_update_device(device)
     assert coordinator.data.devices["device-remo3-1"].name == "Renamed Remo"
+
+
+# Only ever reached when the merge under test regressed: in a passing run the
+# fetch is released by the test itself, so nothing waits on a clock.
+FETCH_TIMEOUT = 10
+
+
+def block_appliance_fetch(
+    mock_client: AsyncMock, result: list[Appliance]
+) -> tuple[asyncio.Event, asyncio.Event]:
+    """Hold get_appliances open until released, signalling when it started."""
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def _blocking_get_appliances() -> list[Appliance]:
+        started.set()
+        await release.wait()
+        return result
+
+    mock_client.get_appliances.side_effect = _blocking_get_appliances
+    return started, release
+
+
+async def test_push_during_a_fetch_is_not_reverted_by_the_poll(
+    hass: HomeAssistant,
+    coordinator: NatureRemoCoordinator,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """A write landing mid-poll survives the fetch that started before it.
+
+    HA assigns coordinator.data from the in-flight fetch's result
+    unconditionally and an optimistic push cancels the scheduled refresh, not
+    a running one: without the merge the pre-write server snapshot would win
+    and stay for a full update interval — long enough for the next writer to
+    rebuild its payload from the rolled-back extras and wipe the earlier write
+    server-side, the exact race the per-appliance write lock closes for
+    writers alone.
+    """
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    started, release = block_appliance_fetch(mock_client, appliances)
+
+    refresh = hass.async_create_task(coordinator.async_refresh())
+    try:
+        async with asyncio.timeout(FETCH_TIMEOUT):
+            await started.wait()
+        coordinator.async_update_appliance(
+            replace(coordinator.data.appliances["appliance-ac-1"], nickname="Pushed AC")
+        )
+        coordinator.async_update_device(
+            replace(coordinator.data.devices["device-remo3-1"], name="Pushed Remo")
+        )
+    finally:
+        # Never leave the fetch blocked: a regression must surface as a failed
+        # assertion, not as a hung test run.
+        release.set()
+    await refresh
+
+    assert coordinator.data.appliances["appliance-ac-1"].nickname == "Pushed AC"
+    assert coordinator.data.devices["device-remo3-1"].name == "Pushed Remo"
+    # Everything the writes did not touch still comes from the fetch.
+    assert coordinator.data.appliances["appliance-ac-2"].nickname == "Bedroom AC"
+    assert coordinator.data.devices["device-mini-1"].name == "Bedroom Remo mini"
+
+
+async def test_push_before_a_fetch_is_replaced_by_server_data(
+    coordinator: NatureRemoCoordinator,
+) -> None:
+    """Optimistic values are not sticky: a later poll's data wins."""
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    coordinator.async_update_appliance(
+        replace(coordinator.data.appliances["appliance-ac-1"], nickname="Pushed AC")
+    )
+
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+
+    assert coordinator.data.appliances["appliance-ac-1"].nickname == "Living AC"
+
+
+async def test_push_during_a_fetch_does_not_resurrect_a_deleted_appliance(
+    hass: HomeAssistant,
+    coordinator: NatureRemoCoordinator,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """An id the fetch stopped reporting stays gone despite a mid-fetch push.
+
+    Otherwise a command response would keep an appliance deleted in the Nature
+    app alive forever and its entities would never reach the removal grace.
+    """
+    coordinator.async_set_updated_data(await coordinator._async_update_data())
+    started, release = block_appliance_fetch(
+        mock_client,
+        [appliance for appliance in appliances if appliance.id != "appliance-ac-1"],
+    )
+
+    refresh = hass.async_create_task(coordinator.async_refresh())
+    try:
+        async with asyncio.timeout(FETCH_TIMEOUT):
+            await started.wait()
+        coordinator.async_update_appliance(
+            replace(coordinator.data.appliances["appliance-ac-1"], nickname="Pushed AC")
+        )
+    finally:
+        release.set()
+    await refresh
+
+    assert "appliance-ac-1" not in coordinator.data.appliances

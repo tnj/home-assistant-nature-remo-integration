@@ -1,12 +1,15 @@
 """Tests for the Nature Remo sensor platform."""
 
+from dataclasses import replace
 from datetime import timedelta
 from unittest.mock import AsyncMock
 
 import homeassistant.util.dt as dt_util
-from aionatureremo import Appliance, NatureRemoConnectionError
+from aionatureremo import Appliance, Device, NatureRemoConnectionError
+from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_component import DATA_INSTANCES
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
@@ -66,6 +69,57 @@ async def test_sensors_unavailable_on_update_failure(
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=61))
     await hass.async_block_till_done()
 
+    state = hass.states.get("sensor.living_remo_temperature")
+    assert state is not None
+    assert state.state == STATE_UNAVAILABLE
+
+
+async def test_offline_device_sensors_unavailable(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+    devices: list[Device],
+) -> None:
+    """A hub reporting online=False serves no readings; None keeps serving.
+
+    ``online`` only exists on newer firmware, so the Remo mini fixture
+    (no flag at all, parsed as None) must stay available.
+    """
+    mock_client.get_devices.return_value = [
+        replace(device, online=False) if device.id == "device-remo3-1" else device
+        for device in devices
+    ]
+
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert hass.states.get("sensor.living_remo_temperature").state == STATE_UNAVAILABLE
+    assert hass.states.get("sensor.living_remo_humidity").state == STATE_UNAVAILABLE
+
+    mini = hass.states.get("sensor.bedroom_remo_mini_temperature")
+    assert mini is not None
+    assert mini.state != STATE_UNAVAILABLE
+
+
+async def test_sensor_reads_after_the_device_vanishes(
+    hass: HomeAssistant, init_integration: MockConfigEntry
+) -> None:
+    """A hub gone from the coordinator data never raises a bare KeyError.
+
+    Mirrors the appliance snapshot (see test_switch): the devices dict can
+    lose the hub while reads still reach the entity, because the poll that
+    drops it notifies the listeners after the data is swapped in.
+    """
+    entity = hass.data[DATA_INSTANCES][SENSOR_DOMAIN].get_entity(
+        "sensor.living_remo_temperature"
+    )
+    assert entity is not None
+    coordinator = init_integration.runtime_data
+    coordinator.data.devices.pop("device-remo3-1")
+
+    assert entity.device.id == "device-remo3-1"  # last-known snapshot
+    entity.async_write_ha_state()
     state = hass.states.get("sensor.living_remo_temperature")
     assert state is not None
     assert state.state == STATE_UNAVAILABLE

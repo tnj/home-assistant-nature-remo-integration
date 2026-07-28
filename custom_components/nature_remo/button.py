@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from functools import partial
 
 from aionatureremo import (
     APPLIANCE_TYPE_AC,
@@ -15,12 +16,18 @@ from aionatureremo import (
     Signal,
 )
 from homeassistant.components.button import ButtonEntity
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator
-from .entity import NatureRemoApplianceEntity, command_error_message
+from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator, NatureRemoData
+from .entity import (
+    EntityFactory,
+    NatureRemoApplianceEntity,
+    async_manage_platform_entities,
+    command_error_message,
+)
 
 PARALLEL_UPDATES = 1
 
@@ -37,73 +44,76 @@ KNOWN_LIGHT_BUTTON_KEYS = {
 
 # The everyday controls: power, input cycle, channel up/down, volume up/down.
 # These are the only TV buttons enabled by default; every other button in
-# KNOWN_TV_BUTTON_KEYS (and any unrecognized name) is created disabled.
+# KNOWN_TV_BUTTON_NAMES (and any unrecognized name) is created disabled.
 # "power" is a toggle-only IR signal and this button is its primary control
 # surface (there is no remote entity; the TV has no discrete on/off codes).
 SHORTCUT_TV_BUTTON_NAMES = frozenset(
     {"power", "select-input-src", "ch-up", "ch-down", "vol-up", "vol-down"}
 )
 
-# Translation keys for every button name the Nature API is known to enumerate
-# in tv.buttons[]. Names outside this vocabulary still get an entity (see
-# NatureRemoTVButton), falling back to their API-provided label.
-KNOWN_TV_BUTTON_KEYS = {
-    "input-terrestrial": "input_terrestrial",
-    "input-bs": "input_bs",
-    "input-cs": "input_cs",
-    "select-input-src": "select_input_src",
-    "power": "power",
-    "mute": "mute",
-    "vol-up": "vol_up",
-    "vol-down": "vol_down",
-    "ch-up": "ch_up",
-    "ch-down": "ch_down",
-    "ch-1": "ch_1",
-    "ch-2": "ch_2",
-    "ch-3": "ch_3",
-    "ch-4": "ch_4",
-    "ch-5": "ch_5",
-    "ch-6": "ch_6",
-    "ch-7": "ch_7",
-    "ch-8": "ch_8",
-    "ch-9": "ch_9",
-    "ch-10": "ch_10",
-    "ch-11": "ch_11",
-    "ch-12": "ch_12",
-    "up": "up",
-    "down": "down",
-    "left": "left",
-    "right": "right",
-    "ok": "ok",
-    "back": "back",
-    "exit": "exit",
-    "home": "home",
-    "settings": "settings",
-    "submenu": "submenu",
-    "display": "display",
-    "d": "d",
-    "tv-schedule": "tv_schedule",
-    "select-audio": "select_audio",
-    "blue": "blue",
-    "red": "red",
-    "green": "green",
-    "yellow": "yellow",
-    "play": "play",
-    "pause": "pause",
-    "stop": "stop",
-    "prev": "prev",
-    "next": "next",
-    "fast-rewind": "fast_rewind",
-    "fast-forward": "fast_forward",
-    "record": "record",
-    "rewind-10-sec": "rewind_10_sec",
-    "forward-30-sec": "forward_30_sec",
-    "clear-sound": "clear_sound",
-    "rec-list": "rec_list",
-    "program-info": "program_info",
-    "subtitle": "subtitle",
-    "tool": "tool",
-}
+# Button names the Nature API is known to enumerate in tv.buttons[]. Names
+# outside this vocabulary still get an entity (see NatureRemoTVButton),
+# falling back to their API-provided label. Each known name's translation key
+# is name.replace("-", "_") (verified against strings.json's button section).
+KNOWN_TV_BUTTON_NAMES = frozenset(
+    {
+        "input-terrestrial",
+        "input-bs",
+        "input-cs",
+        "select-input-src",
+        "power",
+        "mute",
+        "vol-up",
+        "vol-down",
+        "ch-up",
+        "ch-down",
+        "ch-1",
+        "ch-2",
+        "ch-3",
+        "ch-4",
+        "ch-5",
+        "ch-6",
+        "ch-7",
+        "ch-8",
+        "ch-9",
+        "ch-10",
+        "ch-11",
+        "ch-12",
+        "up",
+        "down",
+        "left",
+        "right",
+        "ok",
+        "back",
+        "exit",
+        "home",
+        "settings",
+        "submenu",
+        "display",
+        "d",
+        "tv-schedule",
+        "select-audio",
+        "blue",
+        "red",
+        "green",
+        "yellow",
+        "play",
+        "pause",
+        "stop",
+        "prev",
+        "next",
+        "fast-rewind",
+        "fast-forward",
+        "record",
+        "rewind-10-sec",
+        "forward-30-sec",
+        "clear-sound",
+        "rec-list",
+        "program-info",
+        "subtitle",
+        "tool",
+    }
+)
 
 
 async def async_setup_entry(
@@ -113,41 +123,27 @@ async def async_setup_entry(
 ) -> None:
     """Set up buttons for IR signals and extra light buttons."""
     coordinator = entry.runtime_data
-    known: set[str] = set()
 
-    @callback
-    def _sync_entities() -> None:
-        new_entities: list[ButtonEntity] = []
-        for appliance_id, appliance in coordinator.data.appliances.items():
+    def _build_entities(data: NatureRemoData) -> dict[str, EntityFactory]:
+        entities: dict[str, EntityFactory] = {}
+        for appliance_id, appliance in data.appliances.items():
             for signal in appliance.signals:
-                unique_id = f"{appliance_id}_signal_{signal.id}"
-                if unique_id in known:
-                    continue
-                known.add(unique_id)
-                new_entities.append(
-                    NatureRemoSignalButton(coordinator, appliance_id, signal)
+                entities[f"{appliance_id}_signal_{signal.id}"] = partial(
+                    NatureRemoSignalButton, coordinator, appliance_id, signal
                 )
             if appliance.type == APPLIANCE_TYPE_LIGHT and appliance.light is not None:
                 for button in appliance.light.buttons:
                     if button.name in LIGHT_POWER_BUTTONS:
                         continue
-                    unique_id = f"{appliance_id}_button_{button.name}"
-                    if unique_id in known:
-                        continue
-                    known.add(unique_id)
-                    new_entities.append(
-                        NatureRemoLightButton(coordinator, appliance_id, button)
+                    entities[f"{appliance_id}_button_{button.name}"] = partial(
+                        NatureRemoLightButton, coordinator, appliance_id, button
                     )
             if appliance.type == APPLIANCE_TYPE_TV and appliance.tv is not None:
                 for button in appliance.tv.buttons:
                     if not button.name:
                         continue
-                    unique_id = f"{appliance_id}_button_{button.name}"
-                    if unique_id in known:
-                        continue
-                    known.add(unique_id)
-                    new_entities.append(
-                        NatureRemoTVButton(coordinator, appliance_id, button)
+                    entities[f"{appliance_id}_button_{button.name}"] = partial(
+                        NatureRemoTVButton, coordinator, appliance_id, button
                     )
             if (
                 appliance.type == APPLIANCE_TYPE_LIGHT_PROJECTOR
@@ -157,31 +153,29 @@ async def async_setup_entry(
                 # order and skipped empty names.
                 for projector_button in appliance.light_projector.buttons:
                     unique_id = f"{appliance_id}_button_{projector_button.name}"
-                    if unique_id in known:
-                        continue
-                    known.add(unique_id)
-                    new_entities.append(
-                        NatureRemoLightProjectorButton(
-                            coordinator, appliance_id, projector_button
-                        )
+                    entities[unique_id] = partial(
+                        NatureRemoLightProjectorButton,
+                        coordinator,
+                        appliance_id,
+                        projector_button,
                     )
             if appliance.type == APPLIANCE_TYPE_AC and appliance.aircon is not None:
                 for name in appliance.aircon.fixed_buttons:
                     # power-off is the climate entity's HVACMode.OFF.
                     if not name or name == "power-off":
                         continue
-                    unique_id = f"{appliance_id}_button_{name}"
-                    if unique_id in known:
-                        continue
-                    known.add(unique_id)
-                    new_entities.append(
-                        NatureRemoACFixedButton(coordinator, appliance_id, name)
+                    entities[f"{appliance_id}_button_{name}"] = partial(
+                        NatureRemoACFixedButton, coordinator, appliance_id, name
                     )
-        if new_entities:
-            async_add_entities(new_entities)
+        return entities
 
-    _sync_entities()
-    entry.async_on_unload(coordinator.async_add_listener(_sync_entities))
+    async_manage_platform_entities(
+        hass,
+        entry,
+        async_add_entities,
+        domain=Platform.BUTTON,
+        build_entities=_build_entities,
+    )
 
 
 class NatureRemoSignalButton(NatureRemoApplianceEntity, ButtonEntity):
@@ -197,7 +191,23 @@ class NatureRemoSignalButton(NatureRemoApplianceEntity, ButtonEntity):
         super().__init__(coordinator, appliance_id)
         self._signal_id = signal.id
         self._attr_unique_id = f"{appliance_id}_signal_{signal.id}"
-        self._attr_name = signal.name
+        self._last_name = signal.name
+
+    @property
+    def name(self) -> str:
+        """Follow the signal name, which users edit in the Nature app.
+
+        Unlike TV / light / projector / AC buttons — whose names come from a
+        fixed per-model catalog — a signal name is free text the user typed,
+        so a rename must reach the entity on the next poll instead of
+        freezing at whatever it was when the entity was created. The last
+        known name covers a poll that no longer lists the signal.
+        """
+        for signal in self.appliance.signals:
+            if signal.id == self._signal_id:
+                self._last_name = signal.name
+                break
+        return self._last_name
 
     async def async_press(self) -> None:
         """Send the IR signal."""
@@ -268,8 +278,8 @@ class NatureRemoTVButton(NatureRemoApplianceEntity, ButtonEntity):
         self._attr_entity_registry_enabled_default = (
             button.name in SHORTCUT_TV_BUTTON_NAMES
         )
-        if (translation_key := KNOWN_TV_BUTTON_KEYS.get(button.name)) is not None:
-            self._attr_translation_key = translation_key
+        if button.name in KNOWN_TV_BUTTON_NAMES:
+            self._attr_translation_key = button.name.replace("-", "_")
         else:
             self._attr_name = button.label or button.name
 
