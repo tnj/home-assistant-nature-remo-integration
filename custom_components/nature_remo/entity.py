@@ -205,18 +205,6 @@ def build_appliance_device_info(appliance: Appliance) -> DeviceInfo:
     return device_info
 
 
-def command_error_message(action: str, err: NatureRemoError) -> str:
-    """Compose a command-failure message, surfacing the rate-limit reset.
-
-    Spec 5.5 requires command failures to include the rate-limit reset epoch
-    when the API returns HTTP 429; other errors keep the plain message.
-    """
-    message = f"{action}: {err}"
-    if isinstance(err, NatureRemoRateLimitError) and err.reset is not None:
-        message = f"{message} (rate limit resets at epoch {err.reset})"
-    return message
-
-
 def raise_command_error(name: str, err: NatureRemoError) -> NoReturn:
     """Raise a translated command failure, surfacing the rate-limit reset.
 
