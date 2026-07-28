@@ -116,9 +116,9 @@ reviewer-facing rationale for Home Assistant core submission lives in
   temperature/fan/swing change implicitly powered a powered-off unit back
   on. Preserving the button on a write that omits it is probe-verified for
   extras writes (`set_aircon_settings`/`set_floor_heater_settings` called
-  from `entity.py`); the climate entity relies on the same field being
-  honored on a **full** settings write, which is not yet confirmed against
-  real hardware — see "Verification pending before release" below.
+  from `entity.py`) and was verified for the climate entity's **full**
+  settings write against real hardware on 2026-07-28 — see "Live
+  verification record" below.
 - `min_temp` / `max_temp` / `target_temperature_step` come from the **union
   of absolute per-mode temperature lists**, because HA validates
   `set_temperature` against entity-level bounds before mode switches.
@@ -274,30 +274,32 @@ refresh/set, Local API, OAuth2 (business-only).
   relative. Unsupported `dirh` arrives as `[""]` and empty strings are
   stripped.
 
-## Verification pending before release
+## Live verification record (2026-07-28)
 
-Per the mandatory release order in `CLAUDE.md` (implement → code review →
-live verification → release), these two behaviors are implemented and
-unit-tested but not yet confirmed against real hardware:
+Per the mandatory release order in `CLAUDE.md` (implement -> code review ->
+live verification -> release), the two behaviors that were implemented and
+unit-tested ahead of hardware confirmation were verified on 2026-07-28
+against a dev HA instance with a real token:
 
-- **Full climate settings write with `button="power-off"`.** A
-  temperature/fan/swing change on a powered-off unit now sends the stored
-  power button back unchanged instead of defaulting to power-on (see
-  Climate above). The button-preservation behavior is probe-verified for
-  extras writes (`set_aircon_settings`/`set_floor_heater_settings` called
-  from the switch/select/time entities); the climate entity's **full**
-  settings write has not been probed the same way. Needs a live check that
-  the unit stays off and that sending `button=power-off` alongside a
-  temperature/mode payload causes no unwanted IR emission.
-- **Entity/device removal grace against the real API.** The 3-poll grace in
-  `entity.async_manage_platform_entities` (and the equivalent in
-  `_async_stale_device_remover`) is unit-tested against synthetic missing
-  ids, not against real API flakiness. Value-gated membership (smart-meter
-  and offset/device-event entities, whose ids appear only while the EPC or
-  event is in that poll's payload) is now handled by the `retain` predicate,
-  so a transient dropout keeps the entity; what still needs live watching is
-  whether any *presence*-gated catalog (signals, TV buttons, extras) flakes
-  on real hardware. Every removal is logged at INFO
-  (`custom_components.nature_remo`), so the live check is: grep the log for
-  "Removing" and confirm each line names something genuinely deleted in the
-  Nature app.
+- **Full climate settings write with `button="power-off"`: VERIFIED.**
+  `climate.set_temperature` (25 -> 26, then 26 -> 25) on a powered-off AC
+  (Mitsubishi-family unit "raibeya aircon", `settings.button == "power-off"`,
+  mode cool) kept `button == "power-off"` in the server response and in a
+  follow-up `GET /1/appliances` both times; `settings.updated_at` advanced to
+  the command time, the temperature stored server-side, the HA entity stayed
+  `off` with the new target, and the physical unit did not power on.
+- **Entity removal grace against the real API: VERIFIED for the orphan
+  sweep.** On the first run after the upgrade, the registry still held two
+  v0.1-era orphaned `select` entities (`..._input` unique_ids no longer
+  produced). Both were removed exactly 3 real polls after startup with the
+  INFO log line naming entity_id, unique_id, and streak; ~100 valid
+  disabled-by-default button entities and live entities were untouched
+  across the session's polls. What remains an *observe-in-production* item
+  (not force-testable on demand): whether any presence-gated catalog
+  (signals, TV buttons, extras) flakes on real hardware for 3+ consecutive
+  polls, and the retained-sensor `unknown` window during a value dropout.
+  Every removal is logged at INFO (`custom_components.nature_remo`), so the
+  ongoing check stays: grep the log for "Removing" and confirm each line
+  names something genuinely deleted in the Nature app. Old `remote.*`
+  registry remnants from v0.1 are outside every current platform's domain
+  and are deliberately not swept (one-time manual cleanup if desired).

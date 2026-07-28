@@ -90,9 +90,9 @@ via trusted publishing; then bump the pin here.
 - **Climate writes preserve the stored power button by default**
   (`button=None` → the appliance's current `settings.button`), so a
   temperature/fan/swing change no longer implicitly powers a unit back on.
-  This is probe-verified for extras writes; on a full climate settings write
-  it relies on the API honoring the button field sent back — **live
-  verification still pending**.
+  This is probe-verified for extras writes and live-verified for full
+  climate settings writes (2026-07-28: temperature changes on a powered-off
+  AC kept `button="power-off"` server-side; the unit stayed off).
 - **Dynamic entity add/remove is one shared helper**
   (`entity.async_manage_platform_entities`) used by every platform: an id
   missing from `STALE_POLLS_BEFORE_REMOVAL` (3) consecutive **real** polls
