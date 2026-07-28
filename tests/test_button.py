@@ -118,15 +118,17 @@ async def test_light_extra_buttons(
 async def test_signal_button_failure_raises(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
 ) -> None:
-    """A failed IR signal send surfaces as HomeAssistantError."""
+    """A failed IR signal send surfaces as a translated command failure."""
     mock_client.send_signal.side_effect = NatureRemoConnectionError("boom")
-    with pytest.raises(HomeAssistantError, match="Failed to send IR signal"):
+    with pytest.raises(HomeAssistantError) as exc_info:
         await hass.services.async_call(
             BUTTON_DOMAIN,
             SERVICE_PRESS,
             {ATTR_ENTITY_ID: "button.fan_power"},
             blocking=True,
         )
+    assert exc_info.value.translation_key == "command_failed"
+    assert exc_info.value.translation_placeholders == {"name": "Fan", "error": "boom"}
 
 
 async def test_light_button_failure_raises(
@@ -139,10 +141,15 @@ async def test_light_button_failure_raises(
     )
     assert night_entity is not None
     mock_client.send_light_button.side_effect = NatureRemoConnectionError("boom")
-    with pytest.raises(HomeAssistantError, match="Bedroom Light"):
+    with pytest.raises(HomeAssistantError) as exc_info:
         await hass.services.async_call(
             BUTTON_DOMAIN, SERVICE_PRESS, {ATTR_ENTITY_ID: night_entity}, blocking=True
         )
+    assert exc_info.value.translation_key == "command_failed"
+    assert exc_info.value.translation_placeholders == {
+        "name": "Bedroom Light",
+        "error": "boom",
+    }
 
 
 @pytest.mark.parametrize(
@@ -172,10 +179,15 @@ async def test_button_press_failure_raises(
     assert entity_id is not None
     getattr(mock_client, client_method).side_effect = NatureRemoConnectionError("boom")
 
-    with pytest.raises(HomeAssistantError, match=f"Failed to control {nickname}"):
+    with pytest.raises(HomeAssistantError) as exc_info:
         await hass.services.async_call(
             BUTTON_DOMAIN, SERVICE_PRESS, {ATTR_ENTITY_ID: entity_id}, blocking=True
         )
+    assert exc_info.value.translation_key == "command_failed"
+    assert exc_info.value.translation_placeholders == {
+        "name": nickname,
+        "error": "boom",
+    }
 
 
 async def test_tv_shortcut_buttons(

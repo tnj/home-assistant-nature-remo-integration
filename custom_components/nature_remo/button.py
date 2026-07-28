@@ -18,7 +18,6 @@ from aionatureremo import (
 from homeassistant.components.button import ButtonEntity
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator, NatureRemoData
@@ -26,7 +25,7 @@ from .entity import (
     EntityFactory,
     NatureRemoApplianceEntity,
     async_manage_platform_entities,
-    command_error_message,
+    raise_command_error,
 )
 
 PARALLEL_UPDATES = 1
@@ -214,9 +213,7 @@ class NatureRemoSignalButton(NatureRemoApplianceEntity, ButtonEntity):
         try:
             await self.coordinator.client.send_signal(self._signal_id)
         except NatureRemoError as err:
-            raise HomeAssistantError(
-                command_error_message("Failed to send IR signal", err)
-            ) from err
+            raise_command_error(self.appliance.nickname, err)
 
 
 class NatureRemoLightButton(NatureRemoApplianceEntity, ButtonEntity):
@@ -245,9 +242,7 @@ class NatureRemoLightButton(NatureRemoApplianceEntity, ButtonEntity):
                 appliance.id, self._button_name
             )
         except NatureRemoError as err:
-            raise HomeAssistantError(
-                command_error_message(f"Failed to control {appliance.nickname}", err)
-            ) from err
+            raise_command_error(appliance.nickname, err)
         if appliance.light is not None:
             self.coordinator.async_update_appliance(
                 replace(appliance, light=replace(appliance.light, state=new_state))
@@ -291,9 +286,7 @@ class NatureRemoTVButton(NatureRemoApplianceEntity, ButtonEntity):
                 appliance.id, self._button_name
             )
         except NatureRemoError as err:
-            raise HomeAssistantError(
-                command_error_message(f"Failed to control {appliance.nickname}", err)
-            ) from err
+            raise_command_error(appliance.nickname, err)
 
 
 class NatureRemoLightProjectorButton(NatureRemoApplianceEntity, ButtonEntity):
@@ -331,9 +324,7 @@ class NatureRemoLightProjectorButton(NatureRemoApplianceEntity, ButtonEntity):
                 appliance.id, self._button_name
             )
         except NatureRemoError as err:
-            raise HomeAssistantError(
-                command_error_message(f"Failed to control {appliance.nickname}", err)
-            ) from err
+            raise_command_error(appliance.nickname, err)
 
 
 KNOWN_AC_FIXED_BUTTON_KEYS = {
@@ -374,6 +365,4 @@ class NatureRemoACFixedButton(NatureRemoApplianceEntity, ButtonEntity):
                 appliance.id, button=self._button_name
             )
         except NatureRemoError as err:
-            raise HomeAssistantError(
-                command_error_message(f"Failed to control {appliance.nickname}", err)
-            ) from err
+            raise_command_error(appliance.nickname, err)
