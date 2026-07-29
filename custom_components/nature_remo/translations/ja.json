@@ -291,7 +291,7 @@
       "message": "{name} へのコマンド送信に失敗しました: {error}（レート制限は epoch {reset} にリセットされます）"
     },
     "extra_write_ignored": {
-      "message": "{name} を更新できません: '{extra}' への書き込みが API に無視されました（現在の運転モードでは利用できません）"
+      "message": "{name} を更新できません: {extra} への書き込みが API に無視されました（現在の運転モードでは利用できません）"
     },
     "offset_not_whole": {
       "message": "オフセットは整数で指定してください（指定値: {value}）"

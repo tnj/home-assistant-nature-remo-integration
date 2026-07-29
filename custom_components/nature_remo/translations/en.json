@@ -291,7 +291,7 @@
       "message": "Failed to send the command to {name}: {error} (rate limit resets at epoch {reset})"
     },
     "extra_write_ignored": {
-      "message": "Failed to update {name}: the API ignored the write to '{extra}' (not available in the current operation mode)"
+      "message": "Failed to update {name}: the API ignored the write to {extra} (not available in the current operation mode)"
     },
     "offset_not_whole": {
       "message": "Offset must be a whole number, got {value}"
