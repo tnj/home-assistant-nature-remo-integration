@@ -27,7 +27,9 @@ rules:
   # Silver
   action-exceptions: done
   config-entry-unloading: done
-  docs-configuration-parameters: todo
+  docs-configuration-parameters:
+    status: exempt
+    comment: The integration has no options flow.
   docs-installation-parameters: todo
   entity-unavailable: done
   integration-owner: done

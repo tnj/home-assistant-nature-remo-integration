@@ -19,20 +19,41 @@ Steps to move this integration from `custom_components/` into
 
 ## 3. Core PR #1 — config flow + sensor (Bronze)
 
-- Copy `custom_components/nature_remo/` → `homeassistant/components/nature_remo/`.
-- Copy `tests/` → `tests/components/nature_remo/`.
-- Manifest diff: **remove `version`**, add `"quality_scale": "bronze"`.
-- Keep only `PLATFORMS = [Platform.SENSOR]` and the sensor platform in PR #1
-  (core requires starting with a single platform); leave the rest here.
-- Test imports: replace `pytest_homeassistant_custom_component.common` with
-  `tests.common`; drop the `enable_custom_integrations` fixture.
-- Trim `quality_scale.yaml` statuses to match what PR #1 ships.
-- Add yourself to `manifest.json` `codeowners`; run `python -m script.hassfest`.
+Assembled 2026-07-29 on `tnj/core` branch `nature-remo` (base: `dev`).
+Deliberately minimal: sampled reviews of merged new-integration PRs show
+reviewers defer diagnostics, reconfigure, and even reauth to "a later PR"
+(home-assistant/core #175085, #174299, #173563), so PR #1 ships only the
+user config-flow step and a static sensor platform. This table is the
+sync contract between the custom component and the core copy until the
+follow-ups re-converge them.
+
+| file | PR #1 transformation |
+| --- | --- |
+| `manifest.json` | drop `version`; add `"quality_scale": "bronze"`; pin `aionatureremo==0.4.0` |
+| `const.py` | `DOMAIN` + `UPDATE_INTERVAL` only |
+| `coordinator.py` | poll + translated exceptions only (write locks, push-generation merge, optimistic updates return with climate) |
+| `entity.py` | device-info builders + `NatureRemoDeviceEntity` / `NatureRemoApplianceEntity` only |
+| `sensor.py` | descriptions unchanged; setup rewritten to static creation from first-refresh data |
+| `config_flow.py` | user step only (reauth / reconfigure deferred) |
+| `__init__.py` | setup/unload + eager device registration only (stale-device removal deferred) |
+| `strings.json` | user step + sensor names + coordinator exception keys; core `[%key:common::…%]` refs; no `translations/` (Lokalise) |
+| `icons.json` | sensor entries only |
+| `quality_scale.yaml` | honest PR #1 ledger — deferred rules back to `todo` |
+| not shipped | `diagnostics.py`, all other platforms |
+
+Tests: `conftest` ported to `tests.common` (no
+`enable_custom_integrations`); config_flow / init / coordinator trimmed to
+the shipped surface; `test_sensor` converted to `snapshot_platform`
+snapshots (core's new-integration convention) plus explicit availability
+tests. `test_entity_sync`, `test_write_serialization`,
+`test_diagnostics`, and `test_translations` stay custom-repo-only.
 
 ## 4. Follow-up PRs
 
-climate → light/button/number → diagnostics & dynamic/stale
-devices. One platform (or one coherent feature) per PR.
+reauth + reconfigure → climate (returns the coordinator write locks and
+push-generation merge with it) → button/light → number →
+switch/select/time (extras) → diagnostics → dynamic entity management +
+stale-device removal. One platform (or one coherent feature) per PR.
 
 ## 5. Documentation PRs
 
