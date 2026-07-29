@@ -67,10 +67,15 @@ async def test_light_command_failure_raises(
     power state the API last reported.
     """
     mock_client.send_light_button.side_effect = NatureRemoConnectionError("boom")
-    with pytest.raises(HomeAssistantError, match="Failed to control Bedroom Light"):
+    with pytest.raises(HomeAssistantError) as exc_info:
         await hass.services.async_call(
             LIGHT_DOMAIN, service, {ATTR_ENTITY_ID: ENTITY}, blocking=True
         )
+    assert exc_info.value.translation_key == "command_failed"
+    assert exc_info.value.translation_placeholders == {
+        "name": "Bedroom Light",
+        "error": "boom",
+    }
     state = hass.states.get(ENTITY)
     assert state is not None
     assert state.state == STATE_ON  # unchanged; nothing reached the remote

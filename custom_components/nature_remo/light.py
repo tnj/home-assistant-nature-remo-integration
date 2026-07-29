@@ -11,7 +11,6 @@ from homeassistant.components.light import LightEntity
 from homeassistant.components.light.const import ColorMode
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator, NatureRemoData
@@ -19,7 +18,7 @@ from .entity import (
     EntityFactory,
     NatureRemoApplianceEntity,
     async_manage_platform_entities,
-    command_error_message,
+    raise_command_error,
 )
 
 PARALLEL_UPDATES = 1
@@ -86,9 +85,7 @@ class NatureRemoLight(NatureRemoApplianceEntity, LightEntity):
                 appliance.id, button
             )
         except NatureRemoError as err:
-            raise HomeAssistantError(
-                command_error_message(f"Failed to control {appliance.nickname}", err)
-            ) from err
+            raise_command_error(appliance.nickname, err)
         if appliance.light is not None:
             self.coordinator.async_update_appliance(
                 replace(appliance, light=replace(appliance.light, state=new_state))

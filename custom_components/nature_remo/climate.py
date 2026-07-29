@@ -24,16 +24,17 @@ from homeassistant.components.climate.const import (
 )
 from homeassistant.const import ATTR_TEMPERATURE, Platform, UnitOfTemperature
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util.unit_conversion import TemperatureConverter
 
+from .const import DOMAIN
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator, NatureRemoData
 from .entity import (
     EntityFactory,
     NatureRemoApplianceEntity,
     async_manage_platform_entities,
-    command_error_message,
+    raise_command_error,
 )
 
 PARALLEL_UPDATES = 1
@@ -447,9 +448,7 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
             try:
                 await self._async_write_settings(extra=extra, payload=payload)
             except NatureRemoError as err:
-                raise HomeAssistantError(
-                    command_error_message(f"Failed to update {appliance.nickname}", err)
-                ) from err
+                raise_command_error(appliance.nickname, err)
 
     async def _async_write_settings(
         self, *, extra: dict[str, str] | None, payload: dict[str, str]
@@ -488,7 +487,11 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
             or capability is None
             or nature_mode not in capability.modes
         ):
-            raise ServiceValidationError(f"Unsupported HVAC mode: {hvac_mode}")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="unsupported_hvac_mode",
+                translation_placeholders={"hvac_mode": str(hvac_mode)},
+            )
         return nature_mode
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
@@ -535,14 +538,22 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
         """Set the air volume, keeping the current power state."""
         mode_range = self._mode_range
         if mode_range is None or fan_mode not in mode_range.volumes:
-            raise ServiceValidationError(f"Unsupported fan mode: {fan_mode}")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="unsupported_fan_mode",
+                translation_placeholders={"fan_mode": fan_mode},
+            )
         await self._async_send(air_volume=fan_mode)
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
         """Set the vertical airflow direction, keeping the power state."""
         mode_range = self._mode_range
         if mode_range is None or swing_mode not in mode_range.directions:
-            raise ServiceValidationError(f"Unsupported swing mode: {swing_mode}")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="unsupported_swing_mode",
+                translation_placeholders={"swing_mode": swing_mode},
+            )
         await self._async_send(air_direction=swing_mode)
 
     async def async_set_swing_horizontal_mode(self, swing_horizontal_mode: str) -> None:
@@ -550,7 +561,11 @@ class NatureRemoClimate(NatureRemoApplianceEntity, ClimateEntity):
         mode_range = self._mode_range
         if mode_range is None or swing_horizontal_mode not in mode_range.directions_h:
             raise ServiceValidationError(
-                f"Unsupported horizontal swing mode: {swing_horizontal_mode}"
+                translation_domain=DOMAIN,
+                translation_key="unsupported_swing_horizontal_mode",
+                translation_placeholders={
+                    "swing_horizontal_mode": swing_horizontal_mode
+                },
             )
         await self._async_send(air_direction_h=swing_horizontal_mode)
 

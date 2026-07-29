@@ -138,13 +138,18 @@ async def test_extra_select_ignored_write_raises(
     mock_client.set_aircon_settings.return_value = bedroom_aircon_settings(
         extra={"powerful": "off"}
     )
-    with pytest.raises(HomeAssistantError, match="ignored the write"):
+    with pytest.raises(HomeAssistantError) as exc_info:
         await hass.services.async_call(
             SELECT_DOMAIN,
             SERVICE_SELECT_OPTION,
             {ATTR_ENTITY_ID: ENTITY, ATTR_OPTION: "50%"},
             blocking=True,
         )
+    assert exc_info.value.translation_key == "extra_write_ignored"
+    assert exc_info.value.translation_placeholders == {
+        "name": "Bedroom AC",
+        "extra": "humid",
+    }
     state = hass.states.get(ENTITY)
     assert state is not None
     assert state.state == STATE_UNKNOWN  # server truth applied before the raise
@@ -155,13 +160,18 @@ async def test_extra_select_communication_failure_raises(
 ) -> None:
     """A failed select write surfaces as HomeAssistantError, leaving state be."""
     mock_client.set_aircon_settings.side_effect = NatureRemoConnectionError("boom")
-    with pytest.raises(HomeAssistantError, match="Failed to update Bedroom AC"):
+    with pytest.raises(HomeAssistantError) as exc_info:
         await hass.services.async_call(
             SELECT_DOMAIN,
             SERVICE_SELECT_OPTION,
             {ATTR_ENTITY_ID: ENTITY, ATTR_OPTION: "50%"},
             blocking=True,
         )
+    assert exc_info.value.translation_key == "command_failed"
+    assert exc_info.value.translation_placeholders == {
+        "name": "Bedroom AC",
+        "error": "boom",
+    }
     state = hass.states.get(ENTITY)
     assert state is not None
     assert state.state == STATE_UNKNOWN  # nothing reached the remote

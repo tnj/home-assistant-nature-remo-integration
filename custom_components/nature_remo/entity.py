@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import replace
+from typing import NoReturn
 
 from aionatureremo import (
     APPLIANCE_TYPE_AC,
@@ -204,16 +205,27 @@ def build_appliance_device_info(appliance: Appliance) -> DeviceInfo:
     return device_info
 
 
-def command_error_message(action: str, err: NatureRemoError) -> str:
-    """Compose a command-failure message, surfacing the rate-limit reset.
+def raise_command_error(name: str, err: NatureRemoError) -> NoReturn:
+    """Raise a translated command failure, surfacing the rate-limit reset.
 
     Spec 5.5 requires command failures to include the rate-limit reset epoch
     when the API returns HTTP 429; other errors keep the plain message.
     """
-    message = f"{action}: {err}"
     if isinstance(err, NatureRemoRateLimitError) and err.reset is not None:
-        message = f"{message} (rate limit resets at epoch {err.reset})"
-    return message
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="command_failed_rate_limited",
+            translation_placeholders={
+                "name": name,
+                "error": str(err),
+                "reset": str(err.reset),
+            },
+        ) from err
+    raise HomeAssistantError(
+        translation_domain=DOMAIN,
+        translation_key="command_failed",
+        translation_placeholders={"name": name, "error": str(err)},
+    ) from err
 
 
 class NatureRemoDeviceEntity(CoordinatorEntity[NatureRemoCoordinator]):
@@ -394,8 +406,9 @@ class NatureRemoExtraEntity(NatureRemoApplianceEntity):
             appliance = self.coordinator.data.appliances.get(self._appliance_id)
             if appliance is None:
                 raise HomeAssistantError(
-                    f"Failed to update {self.appliance.nickname}: the appliance "
-                    "is no longer reported by the Nature API"
+                    translation_domain=DOMAIN,
+                    translation_key="appliance_missing",
+                    translation_placeholders={"name": self.appliance.nickname},
                 )
             settings = appliance.settings
             new_extra = dict(settings.extra) if settings is not None else {}
@@ -416,9 +429,7 @@ class NatureRemoExtraEntity(NatureRemoApplianceEntity):
                     )
                     new_appliance = replace(appliance, settings=new_settings)
             except NatureRemoError as err:
-                raise HomeAssistantError(
-                    command_error_message(f"Failed to update {appliance.nickname}", err)
-                ) from err
+                raise_command_error(appliance.nickname, err)
             # Apply server truth first so entity state never lies, then verify
             # the echo: a successful write always echoes the extra back
             # (probe-verified), while a write the server silently ignored (the
@@ -432,7 +443,10 @@ class NatureRemoExtraEntity(NatureRemoApplianceEntity):
             )
             if echoed != value:
                 raise HomeAssistantError(
-                    f"Failed to update {appliance.nickname}: the API ignored the "
-                    f"write to '{self._extra_id}' (not available in the current "
-                    "operation mode)"
+                    translation_domain=DOMAIN,
+                    translation_key="extra_write_ignored",
+                    translation_placeholders={
+                        "name": appliance.nickname,
+                        "extra": self._extra_id,
+                    },
                 )

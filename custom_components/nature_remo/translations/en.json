@@ -276,5 +276,43 @@
         "name": "Night set mode"
       }
     }
+  },
+  "exceptions": {
+    "appliance_missing": {
+      "message": "Failed to update {name}: the appliance is no longer reported by the Nature API"
+    },
+    "auth_failed": {
+      "message": "Access token is invalid or was revoked"
+    },
+    "command_failed": {
+      "message": "Failed to send the command to {name}: {error}"
+    },
+    "command_failed_rate_limited": {
+      "message": "Failed to send the command to {name}: {error} (rate limit resets at epoch {reset})"
+    },
+    "extra_write_ignored": {
+      "message": "Failed to update {name}: the API ignored the write to {extra} (not available in the current operation mode)"
+    },
+    "offset_not_whole": {
+      "message": "Offset must be a whole number, got {value}"
+    },
+    "unsupported_fan_mode": {
+      "message": "Unsupported fan mode: {fan_mode}"
+    },
+    "unsupported_hvac_mode": {
+      "message": "Unsupported HVAC mode: {hvac_mode}"
+    },
+    "unsupported_swing_horizontal_mode": {
+      "message": "Unsupported horizontal swing mode: {swing_horizontal_mode}"
+    },
+    "unsupported_swing_mode": {
+      "message": "Unsupported swing mode: {swing_mode}"
+    },
+    "update_failed": {
+      "message": "Error communicating with the Nature API: {error}"
+    },
+    "update_rate_limited": {
+      "message": "Nature API rate limit exceeded (resets at epoch {reset})"
+    }
   }
 }

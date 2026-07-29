@@ -62,7 +62,7 @@ rules:
     status: done
     comment: Bulk TV buttons are disabled by default; only the everyday shortcuts (power, input, channel, volume) are enabled. Light-projector remote keys likewise ship disabled except the power key.
   entity-translations: done
-  exception-translations: todo
+  exception-translations: done
   icon-translations: done
   reconfiguration-flow: done
   repair-issues:

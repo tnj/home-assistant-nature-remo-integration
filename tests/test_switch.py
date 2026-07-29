@@ -220,10 +220,15 @@ async def test_extra_switch_ignored_write_raises(
     entity applies server truth first (state goes unknown), then raises.
     """
     mock_client.set_aircon_settings.return_value = aircon_settings(extra={})
-    with pytest.raises(HomeAssistantError, match="ignored the write"):
+    with pytest.raises(HomeAssistantError) as exc_info:
         await hass.services.async_call(
             SWITCH_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: ENTITY}, blocking=True
         )
+    assert exc_info.value.translation_key == "extra_write_ignored"
+    assert exc_info.value.translation_placeholders == {
+        "name": "Living AC",
+        "extra": "autoclean",
+    }
     state = hass.states.get(ENTITY)
     assert state is not None
     assert state.state == STATE_UNKNOWN  # server truth applied before the raise
@@ -255,10 +260,15 @@ async def test_extra_switch_communication_failure_raises(
     assert before is not None
     getattr(mock_client, client_method).side_effect = NatureRemoConnectionError("boom")
 
-    with pytest.raises(HomeAssistantError, match=f"Failed to update {nickname}"):
+    with pytest.raises(HomeAssistantError) as exc_info:
         await hass.services.async_call(
             SWITCH_DOMAIN, service, {ATTR_ENTITY_ID: entity_id}, blocking=True
         )
+    assert exc_info.value.translation_key == "command_failed"
+    assert exc_info.value.translation_placeholders == {
+        "name": nickname,
+        "error": "boom",
+    }
 
     state = hass.states.get(entity_id)
     assert state is not None
@@ -272,11 +282,16 @@ async def test_extra_switch_rate_limited_write_reports_reset(
     mock_client.set_aircon_settings.side_effect = NatureRemoRateLimitError(
         429, "limited", reset=1752825600
     )
-    with pytest.raises(HomeAssistantError, match="Failed to update Living AC") as exc:
+    with pytest.raises(HomeAssistantError) as exc:
         await hass.services.async_call(
             SWITCH_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: ENTITY}, blocking=True
         )
-    assert "1752825600" in str(exc.value)
+    assert exc.value.translation_key == "command_failed_rate_limited"
+    assert exc.value.translation_placeholders == {
+        "name": "Living AC",
+        "error": "HTTP 429: limited",
+        "reset": "1752825600",
+    }
 
 
 async def test_floor_heater_extra_switch_state(
@@ -376,6 +391,8 @@ async def test_extra_write_after_appliance_vanishes(
     assert state is not None
     assert state.state == STATE_UNAVAILABLE
 
-    with pytest.raises(HomeAssistantError, match="no longer reported"):
+    with pytest.raises(HomeAssistantError) as exc_info:
         await entity.async_turn_off()
+    assert exc_info.value.translation_key == "appliance_missing"
+    assert exc_info.value.translation_placeholders == {"name": "Living AC"}
     mock_client.set_aircon_settings.assert_not_called()

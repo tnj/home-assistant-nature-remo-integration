@@ -284,11 +284,16 @@ async def test_climate_command_failure_raises(
     mock_client.set_aircon_settings.side_effect = NatureRemoRateLimitError(
         429, "limited", reset=1752825600
     )
-    with pytest.raises(HomeAssistantError, match="Living AC") as exc_info:
+    with pytest.raises(HomeAssistantError) as exc_info:
         await hass.services.async_call(
             CLIMATE_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: ENTITY}, blocking=True
         )
-    assert "1752825600" in str(exc_info.value)
+    assert exc_info.value.translation_key == "command_failed_rate_limited"
+    assert exc_info.value.translation_placeholders == {
+        "name": "Living AC",
+        "error": "HTTP 429: limited",
+        "reset": "1752825600",
+    }
 
 
 async def test_climate_set_hvac_mode_off(
@@ -441,7 +446,7 @@ async def test_climate_set_temperature_rejects_unsupported_mode(
     HA core only validates hvac_mode for set_hvac_mode; dropping it here
     would silently set the temperature in the CURRENT mode instead.
     """
-    with pytest.raises(ServiceValidationError):
+    with pytest.raises(ServiceValidationError) as exc_info:
         await hass.services.async_call(
             CLIMATE_DOMAIN,
             SERVICE_SET_TEMPERATURE,
@@ -452,6 +457,8 @@ async def test_climate_set_temperature_rejects_unsupported_mode(
             },
             blocking=True,
         )
+    assert exc_info.value.translation_key == "unsupported_hvac_mode"
+    assert exc_info.value.translation_placeholders == {"hvac_mode": "heat_cool"}
     mock_client.set_aircon_settings.assert_not_called()
 
 
@@ -596,14 +603,18 @@ async def test_climate_unsupported_values_raise(
     ac = next(a for a in appliances if a.id == "appliance-ac-1")
     entity = _ac_entity(appliances, devices, ac)
 
-    with pytest.raises(ServiceValidationError):
+    with pytest.raises(ServiceValidationError) as exc_info:
         await entity.async_set_hvac_mode(HVACMode.HEAT_COOL)
-    with pytest.raises(ServiceValidationError):
+    assert exc_info.value.translation_key == "unsupported_hvac_mode"
+    with pytest.raises(ServiceValidationError) as exc_info:
         await entity.async_set_fan_mode("bogus")
-    with pytest.raises(ServiceValidationError):
+    assert exc_info.value.translation_key == "unsupported_fan_mode"
+    with pytest.raises(ServiceValidationError) as exc_info:
         await entity.async_set_swing_mode("bogus")
-    with pytest.raises(ServiceValidationError):
+    assert exc_info.value.translation_key == "unsupported_swing_mode"
+    with pytest.raises(ServiceValidationError) as exc_info:
         await entity.async_set_swing_horizontal_mode("bogus")
+    assert exc_info.value.translation_key == "unsupported_swing_horizontal_mode"
 
 
 async def test_climate_preserves_extra_state(

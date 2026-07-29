@@ -276,5 +276,43 @@
         "name": "ナイトセットモード"
       }
     }
+  },
+  "exceptions": {
+    "appliance_missing": {
+      "message": "{name} を更新できません: この家電は Nature API から報告されなくなりました"
+    },
+    "auth_failed": {
+      "message": "アクセストークンが無効か、取り消されています"
+    },
+    "command_failed": {
+      "message": "{name} へのコマンド送信に失敗しました: {error}"
+    },
+    "command_failed_rate_limited": {
+      "message": "{name} へのコマンド送信に失敗しました: {error}（レート制限は epoch {reset} にリセットされます）"
+    },
+    "extra_write_ignored": {
+      "message": "{name} を更新できません: {extra} への書き込みが API に無視されました（現在の運転モードでは利用できません）"
+    },
+    "offset_not_whole": {
+      "message": "オフセットは整数で指定してください（指定値: {value}）"
+    },
+    "unsupported_fan_mode": {
+      "message": "未対応のファンモードです: {fan_mode}"
+    },
+    "unsupported_hvac_mode": {
+      "message": "未対応の HVAC モードです: {hvac_mode}"
+    },
+    "unsupported_swing_horizontal_mode": {
+      "message": "未対応の水平スイングモードです: {swing_horizontal_mode}"
+    },
+    "unsupported_swing_mode": {
+      "message": "未対応のスイングモードです: {swing_mode}"
+    },
+    "update_failed": {
+      "message": "Nature API との通信でエラーが発生しました: {error}"
+    },
+    "update_rate_limited": {
+      "message": "Nature API のレート制限を超過しました（epoch {reset} にリセット）"
+    }
   }
 }
