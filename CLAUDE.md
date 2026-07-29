@@ -115,8 +115,9 @@ via trusted publishing; then bump the pin here.
   error body shape `{"code": 429001, "message": "..."}` — branch on HTTP
   status only.
 - **Rate limit 30 req / 5 min per ACCOUNT** (`X-Rate-Limit-*` headers,
-  tracked by the client). The budget is shared with the Nature app and any
-  other integration on the account; the coordinator polls 2 req/60 s.
+  tracked by the client). The budget is shared account-wide across API
+  clients (whether the Nature app's own traffic counts against it is
+  unverified); the coordinator polls 2 req/60 s.
 - TV input buttons are named `input-terrestrial` / `input-bs` / `input-cs` /
   `select-input-src`; `state.input` uses short codes (`t`/`bs`/`cs`).
   Some TVs return a button with an **empty name** — skip it.
