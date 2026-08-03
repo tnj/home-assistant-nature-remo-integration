@@ -261,6 +261,12 @@
     "switch": {
       "autoclean": {
         "name": "内部クリーン"
+      },
+      "eco": {
+        "name": "Eco"
+      },
+      "sleep": {
+        "name": "おやすみ運転"
       }
     },
     "select": {

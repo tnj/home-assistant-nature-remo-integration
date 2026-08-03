@@ -22,7 +22,16 @@ from .entity import (
 
 PARALLEL_UPDATES = 1
 
-KNOWN_EXTRA_TRANSLATION_KEYS = {"autoclean": "autoclean"}
+# Extra ids seen on real remotes, mapped to a localized name. Anything else
+# falls back to the catalog's own `text`, which the API only ships in
+# English. `sleep` is the binary spelling of night set mode on newer Daikin
+# remotes (arc478a119); `new_sleep` on arc472a82 is a time extra and lives in
+# time.py.
+KNOWN_EXTRA_TRANSLATION_KEYS = {
+    "autoclean": "autoclean",
+    "eco": "eco",
+    "sleep": "sleep",
+}
 
 
 async def async_setup_entry(

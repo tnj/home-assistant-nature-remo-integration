@@ -73,6 +73,23 @@ def test_ja_exceptions_cover_all_keys() -> None:
         assert _message_placeholders(entry["message"]) == EXCEPTION_LEDGER[key], key
 
 
+def test_ja_entity_names_cover_all_keys() -> None:
+    """ja.json names every entity key strings.json does.
+
+    An entity translation key present in strings.json but missing from
+    ja.json renders as the raw key in a Japanese UI — the one failure mode
+    the identical-file check above cannot catch, since ja.json is by design
+    the only file that differs.
+    """
+    entity = _load("strings.json")["entity"]
+    ja_entity = _load("translations/ja.json")["entity"]
+    assert set(ja_entity) == set(entity)
+    for platform, keys in entity.items():
+        assert set(ja_entity[platform]) == set(keys), platform
+        for key in keys:
+            assert ja_entity[platform][key]["name"], f"{platform}.{key}"
+
+
 def test_raise_command_error_plain() -> None:
     """A non-429 client error maps to command_failed with name and error."""
     err = NatureRemoConnectionError("boom")

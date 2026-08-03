@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock
 import homeassistant.util.dt as dt_util
 import pytest
 from aionatureremo import (
+    AirconExtra,
+    AirconExtraOption,
     Appliance,
     Device,
     NatureRemoConnectionError,
@@ -426,3 +428,63 @@ async def test_extra_switch_follows_the_hub_reporting_it(
     await async_poll(hass)
 
     assert hass.states.get(ENTITY).state == STATE_UNAVAILABLE
+
+
+async def test_localized_extra_ids_use_their_translation_key(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """Ids seen on real remotes get a localized name, not the API's English.
+
+    Shapes copied from live catalogs: `eco` from a Panasonic acxa75c11010
+    and `sleep` from a Daikin arc478a119, both binary choices whose `text`
+    the API only ships in English.
+    """
+    on_off = [
+        AirconExtraOption(value="off", text="Off", default=True),
+        AirconExtraOption(value="on", text="On", default=False),
+    ]
+    extras = [
+        AirconExtra(
+            id="eco",
+            text="Eco",
+            description="Power Saving Mode",
+            type="choice",
+            availability="available",
+            options=on_off,
+            default_time=None,
+        ),
+        AirconExtra(
+            id="sleep",
+            text="Night Set Mode",
+            description="Controls airflow direction and volume.",
+            type="choice",
+            availability="available",
+            options=on_off,
+            default_time=None,
+        ),
+    ]
+    mock_client.get_appliances.return_value = [
+        replace(appliance, aircon=replace(appliance.aircon, extras=extras))
+        if appliance.id == "appliance-ac-1"
+        else appliance
+        for appliance in appliances
+    ]
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_registry = er.async_get(hass)
+    for extra_id, name in (("eco", "Eco"), ("sleep", "Night set mode")):
+        entity_id = entity_registry.async_get_entity_id(
+            SWITCH_DOMAIN, DOMAIN, f"appliance-ac-1_extra_{extra_id}"
+        )
+        assert entity_id is not None
+        entry = entity_registry.async_get(entity_id)
+        assert entry is not None
+        # A translation_key at all is what separates these from the fallback
+        # path, which leaves it None and copies the catalog's English text.
+        assert entry.translation_key == extra_id
+        assert entry.original_name == name

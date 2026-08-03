@@ -185,16 +185,22 @@ reviewer-facing rationale for Home Assistant core submission lives in
   | Fujitsu `ar-rfa1j` | none |
 
   `autoclean` is the one id shared by all three manufacturers; everything
-  else varies. Two observations worth keeping in mind before extending the
-  translation tables: Daikin `arc478a119` spells night set mode `sleep` as a
-  binary choice, where `arc472a82` spells it `new_sleep` as a `time` extra —
-  so the same feature is a switch on one remote and a time entity on
-  another. And Mitsubishi's `dehumid` arrives with `text: "Humidify"` and
-  the description "Set the desired humidity level", which contradicts the
-  hardcoded `dehumid` → "Dehumidify" name; the hardcoded translation wins
-  today because it is the only localized one, at the cost of disagreeing
-  with what the API (and the physical remote) calls that setting on this
-  model.
+  else varies. `eco` and `sleep` were added to the switch table from these
+  catalogs (Japanese names taken from the Nature app: "Eco" and
+  「おやすみ運転」), so the fallback now only covers vocabulary nobody has
+  seen yet.
+
+  Two quirks the table records rather than resolves. Daikin `arc478a119`
+  spells night set mode `sleep` as a binary choice where `arc472a82` spells
+  it `new_sleep` as a `time` extra, so the same feature is a switch on one
+  remote and a time entity on another — and the two carry different
+  Japanese names today ("おやすみ運転" vs "ナイトセットモード"), because
+  only the former has been checked against the app. And Mitsubishi's
+  `dehumid` arrives with `text: "Humidify"` and the description "Set the
+  desired humidity level", which contradicts the hardcoded `dehumid` →
+  "Dehumidify" name; the hardcoded translation wins today because it is the
+  only localized one, at the cost of disagreeing with what the API (and the
+  physical remote) calls that setting on this model.
 - Non-binary extras are entities too. Multi-option choice extras (Daikin
   `humid`/`dehumid`: off / 40% / 45% / 50% / continuous / beauty) are
   CONFIG-category `select` entities; options are the API's raw values,

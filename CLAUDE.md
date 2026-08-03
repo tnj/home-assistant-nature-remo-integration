@@ -137,8 +137,9 @@ via trusted publishing; then bump the pin here.
   2026-08-03: Daikin `arc478a119` → `sleep`(choice)+`autoclean`; Mitsubishi
   `pg051` → `autoclean`+`dehumid`(70/60/50/40%); Panasonic `acxa75c11010` →
   `autoclean`+`eco`; Fujitsu `ar-rfa1j` → none. Only `autoclean` is shared.
-  Unmapped ids fall back to the catalog's `text`, so new vocabulary needs no
-  code change — only a translation entry if you want it localized.
+  Unmapped ids fall back to the catalog's `text` (English-only), so new
+  vocabulary needs no code change — only a `KNOWN_EXTRA_TRANSLATION_KEYS`
+  entry plus strings/en/ja to localize it, as done for `eco` and `sleep`.
 - `extra` request fields are dotted form keys: `extra.$id=$value`; `type` is
   `choice` (binary or multi-option, e.g. `50%`) or `time` (`defaultTime`, sent
   as `21:00`). `availability` is three-valued over an otherwise static
