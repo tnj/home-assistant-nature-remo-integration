@@ -15,7 +15,7 @@ from pytest_homeassistant_custom_component.common import (
     async_fire_time_changed,
 )
 
-from tests.conftest import load_json_fixture
+from tests.conftest import async_poll, load_json_fixture
 
 
 async def test_remo_device_sensors(
@@ -102,14 +102,33 @@ async def test_offline_device_sensors_unavailable(
     assert mini.state != STATE_UNAVAILABLE
 
 
+async def test_sensors_unavailable_when_the_hub_disappears(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    devices: list[Device],
+) -> None:
+    """A hub the API stops reporting leaves its sensors unavailable."""
+    mock_client.get_devices.return_value = [
+        device for device in devices if device.id != "device-remo3-1"
+    ]
+    await async_poll(hass)
+
+    state = hass.states.get("sensor.living_remo_temperature")
+    assert state is not None
+    assert state.state == STATE_UNAVAILABLE
+
+
 async def test_sensor_reads_after_the_device_vanishes(
     hass: HomeAssistant, init_integration: MockConfigEntry
 ) -> None:
     """A hub gone from the coordinator data never raises a bare KeyError.
 
-    Mirrors the appliance snapshot (see test_switch): the devices dict can
-    lose the hub while reads still reach the entity, because the poll that
-    drops it notifies the listeners after the data is swapped in.
+    Reaching for the entity object directly is the point: the fallback in
+    ``NatureRemoDeviceEntity.device`` only matters on paths that read the
+    entity while it is unavailable, which a service call or a state write
+    driven by Home Assistant will not do. The poll-driven behaviour is
+    covered by test_sensors_unavailable_when_the_hub_disappears.
     """
     entity = hass.data[DATA_INSTANCES][SENSOR_DOMAIN].get_entity(
         "sensor.living_remo_temperature"
