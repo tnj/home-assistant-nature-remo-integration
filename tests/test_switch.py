@@ -6,7 +6,12 @@ from unittest.mock import AsyncMock
 
 import homeassistant.util.dt as dt_util
 import pytest
-from aionatureremo import Appliance, NatureRemoConnectionError, NatureRemoRateLimitError
+from aionatureremo import (
+    Appliance,
+    Device,
+    NatureRemoConnectionError,
+    NatureRemoRateLimitError,
+)
 from homeassistant.components.select import DOMAIN as SELECT_DOMAIN
 from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
 from homeassistant.components.time import DOMAIN as TIME_DOMAIN
@@ -30,7 +35,7 @@ from pytest_homeassistant_custom_component.common import (
 )
 
 from custom_components.nature_remo.const import DOMAIN
-from tests.conftest import aircon_settings, with_extra_availability
+from tests.conftest import aircon_settings, async_poll, with_extra_availability
 
 ENTITY = "switch.living_ac_mold_proof"
 FH_ENTITY = "switch.floor_heater_save_energy"
@@ -398,3 +403,26 @@ async def test_extra_write_after_appliance_vanishes(
     assert exc_info.value.translation_key == "appliance_missing"
     assert exc_info.value.translation_placeholders == {"name": "Living AC"}
     mock_client.set_aircon_settings.assert_not_called()
+
+
+async def test_extra_switch_follows_the_hub_reporting_it(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    devices: list[Device],
+) -> None:
+    """An appliance is unreachable while the Remo in front of it is offline.
+
+    The cloud keeps serving the appliance and its stored settings, so
+    without following the hub the entity would invite commands that
+    cannot arrive.
+    """
+    assert hass.states.get(ENTITY).state != STATE_UNAVAILABLE
+
+    mock_client.get_devices.return_value = [
+        replace(device, online=False) if device.id == "device-remo3-1" else device
+        for device in devices
+    ]
+    await async_poll(hass)
+
+    assert hass.states.get(ENTITY).state == STATE_UNAVAILABLE

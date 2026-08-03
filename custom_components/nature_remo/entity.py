@@ -308,10 +308,22 @@ class NatureRemoApplianceEntity(CoordinatorEntity[NatureRemoCoordinator]):
 
     @property
     def available(self) -> bool:
-        """Unavailable when the appliance disappears from the account."""
-        return (
-            super().available and self._appliance_id in self.coordinator.data.appliances
-        )
+        """Unavailable when the appliance, or the hub reporting it, is gone.
+
+        The appliance is only reachable through its Remo, so a hub that
+        dropped out of the account or reports itself offline leaves the
+        stored settings stale and any command undeliverable. ``online`` is
+        three-valued: older firmware never reports it, so only an explicit
+        False counts as offline.
+        """
+        if (
+            not super().available
+            or self._appliance_id not in self.coordinator.data.appliances
+        ):
+            return False
+        hub_id = self.appliance.device_id
+        hub = self.coordinator.data.devices.get(hub_id) if hub_id else None
+        return hub is not None and hub.online is not False
 
 
 EXTRA_TYPE_CHOICE = "choice"
