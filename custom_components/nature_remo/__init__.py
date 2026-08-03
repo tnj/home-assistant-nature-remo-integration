@@ -4,7 +4,17 @@ from __future__ import annotations
 
 import logging
 
-from aionatureremo import NatureRemoClient
+from aionatureremo import (
+    APPLIANCE_TYPE_AC,
+    APPLIANCE_TYPE_FLOOR_HEATER,
+    APPLIANCE_TYPE_IR,
+    APPLIANCE_TYPE_LIGHT,
+    APPLIANCE_TYPE_LIGHT_PROJECTOR,
+    APPLIANCE_TYPE_SMART_METER,
+    APPLIANCE_TYPE_TV,
+    Appliance,
+    NatureRemoClient,
+)
 from homeassistant.const import CONF_API_TOKEN, Platform
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
@@ -31,10 +41,37 @@ PLATFORMS: list[Platform] = [
     Platform.TIME,
 ]
 
+# Appliance types some platform reads a type-specific catalog from. Anything
+# else — a BLE_SESAME5 lock, or a type Nature adds later — would land in the
+# registry as a device with nothing in it.
+ENTITY_APPLIANCE_TYPES = frozenset(
+    {
+        APPLIANCE_TYPE_AC,
+        APPLIANCE_TYPE_FLOOR_HEATER,
+        APPLIANCE_TYPE_IR,
+        APPLIANCE_TYPE_LIGHT,
+        APPLIANCE_TYPE_LIGHT_PROJECTOR,
+        APPLIANCE_TYPE_SMART_METER,
+        APPLIANCE_TYPE_TV,
+    }
+)
+
+
+def _has_entities(appliance: Appliance) -> bool:
+    """Whether any platform builds entities for this appliance.
+
+    The type allowlist alone would be too narrow: the button platform turns
+    ``signals`` into entities for every appliance regardless of type, and a
+    device this function skipped would then be created lazily by one of
+    those entities — outside the per-poll re-registration that propagates a
+    nickname edited in the Nature app.
+    """
+    return appliance.type in ENTITY_APPLIANCE_TYPES or bool(appliance.signals)
+
 
 @callback
 def _async_register_devices(hass: HomeAssistant, entry: NatureRemoConfigEntry) -> None:
-    """Register every Remo hub and every appliance up front (spec 5.4).
+    """Register every Remo hub and every serviceable appliance up front (spec 5.4).
 
     Appliance entities link to their hub via ``via_device=(DOMAIN, device.id)``,
     but Remo hubs would otherwise only materialize as a side effect of their own
@@ -47,6 +84,8 @@ def _async_register_devices(hass: HomeAssistant, entry: NatureRemoConfigEntry) -
     every poll: a device an entity created keeps the nickname it was created
     with, so re-registering is what makes a rename in the Nature app show up.
     Hubs come first so no ``via_device`` target is missing when it is needed.
+    Appliances of a type no platform serves are skipped: registering them
+    would leave a device the user can see but never act on.
     """
     coordinator = entry.runtime_data
     device_registry = dr.async_get(hass)
@@ -56,6 +95,8 @@ def _async_register_devices(hass: HomeAssistant, entry: NatureRemoConfigEntry) -
             **build_remo_device_info(device),
         )
     for appliance in coordinator.data.appliances.values():
+        if not _has_entities(appliance):
+            continue
         device_registry.async_get_or_create(
             config_entry_id=entry.entry_id,
             **build_appliance_device_info(appliance),
