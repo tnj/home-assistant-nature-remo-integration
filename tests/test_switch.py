@@ -1,7 +1,7 @@
 """Tests for the Nature Remo switch platform (AC extras)."""
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock
 
 import homeassistant.util.dt as dt_util
@@ -278,7 +278,7 @@ async def test_extra_switch_communication_failure_raises(
 async def test_extra_switch_rate_limited_write_reports_reset(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
 ) -> None:
-    """A 429 on an extras write includes the reset epoch (spec 5.5)."""
+    """A 429 on an extras write names when the limit resets (spec 5.5)."""
     mock_client.set_aircon_settings.side_effect = NatureRemoRateLimitError(
         429, "limited", reset=1752825600
     )
@@ -287,11 +287,13 @@ async def test_extra_switch_rate_limited_write_reports_reset(
             SWITCH_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: ENTITY}, blocking=True
         )
     assert exc.value.translation_key == "command_failed_rate_limited"
-    assert exc.value.translation_placeholders == {
-        "name": "Living AC",
-        "error": "HTTP 429: limited",
-        "reset": "1752825600",
-    }
+    placeholders = exc.value.translation_placeholders
+    assert placeholders is not None
+    assert placeholders["name"] == "Living AC"
+    assert placeholders["error"] == "HTTP 429: limited"
+    assert datetime.fromisoformat(placeholders["reset"]) == dt_util.utc_from_timestamp(
+        1752825600
+    )
 
 
 async def test_floor_heater_extra_switch_state(

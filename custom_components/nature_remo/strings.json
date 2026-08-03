@@ -288,7 +288,7 @@
       "message": "Failed to send the command to {name}: {error}"
     },
     "command_failed_rate_limited": {
-      "message": "Failed to send the command to {name}: {error} (rate limit resets at epoch {reset})"
+      "message": "Failed to send the command to {name}: {error} (rate limit resets at {reset})"
     },
     "extra_write_ignored": {
       "message": "Failed to update {name}: the API ignored the write to {extra} (not available in the current operation mode)"
@@ -312,7 +312,7 @@
       "message": "Error communicating with the Nature API: {error}"
     },
     "update_rate_limited": {
-      "message": "Nature API rate limit exceeded (resets at epoch {reset})"
+      "message": "Nature API rate limit exceeded; requests are accepted again at {reset}"
     }
   }
 }

@@ -24,6 +24,7 @@ from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, Device
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, STALE_POLLS_BEFORE_REMOVAL
 from .coordinator import NatureRemoConfigEntry, NatureRemoCoordinator, NatureRemoData
@@ -208,8 +209,10 @@ def build_appliance_device_info(appliance: Appliance) -> DeviceInfo:
 def raise_command_error(name: str, err: NatureRemoError) -> NoReturn:
     """Raise a translated command failure, surfacing the rate-limit reset.
 
-    Spec 5.5 requires command failures to include the rate-limit reset epoch
-    when the API returns HTTP 429; other errors keep the plain message.
+    Spec 5.5 requires command failures to include the rate-limit reset time
+    when the API returns HTTP 429; other errors keep the plain message. No
+    ``retry_after`` here: ``HomeAssistantError`` has no such argument, and a
+    failed command reschedules nothing.
     """
     if isinstance(err, NatureRemoRateLimitError) and err.reset is not None:
         raise HomeAssistantError(
@@ -218,7 +221,9 @@ def raise_command_error(name: str, err: NatureRemoError) -> NoReturn:
             translation_placeholders={
                 "name": name,
                 "error": str(err),
-                "reset": str(err.reset),
+                "reset": dt_util.as_local(
+                    dt_util.utc_from_timestamp(err.reset)
+                ).isoformat(timespec="seconds"),
             },
         ) from err
     raise HomeAssistantError(
