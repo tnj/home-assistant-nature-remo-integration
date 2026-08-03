@@ -171,6 +171,45 @@ reviewer-facing rationale for Home Assistant core submission lives in
   extra back, so a missing echo raises instead of pretending the toggle
   worked. Entering a mode that hides a stored extra clears it server-side;
   that is the cloud remote's own semantics, mirrored as-is.
+- **The extras vocabulary is per remote model, not per manufacturer**, so no
+  platform code enumerates it: `entity.extra_platform()` classifies whatever
+  the catalog reports, and an id with no entry in a platform's
+  `KNOWN_EXTRA_TRANSLATION_KEYS` falls back to the API's own `text`. Live
+  catalogs seen on 2026-08-03 (four ACs, one account):
+
+  | Remote | Extras |
+  | --- | --- |
+  | Daikin `arc478a119` | `sleep` (choice on/off, text "Night Set Mode"), `autoclean` |
+  | Mitsubishi `pg051` | `autoclean`, `dehumid` (choice 70%/60%/50%/40%) |
+  | Panasonic `acxa75c11010` | `autoclean`, `eco` (choice on/off) |
+  | Fujitsu `ar-rfa1j` | none |
+
+  `autoclean` is the one id shared by all three manufacturers; everything
+  else varies. Japanese names come from what the Nature app displays for
+  the same setting, which is why `eco` stays "Eco" and `sleep` is
+  「おやすみ運転」. `aroma`, `save_energy` and `off_timer` are still
+  unmapped: nobody has read their app labels, and inventing a name that
+  disagrees with the app is worse than showing the API's English.
+
+  Three quirks the table records rather than resolves.
+
+  1. Daikin `arc478a119` spells night set mode `sleep` as a binary choice
+     where `arc472a82` spells it `new_sleep` as a `time` extra, so the same
+     feature is a switch on one remote and a time entity on another. The
+     app names them 「おやすみ運転」 and 「新おやすみ運転」, so the two keys
+     differ in Japanese; the API calls both "Night Set Mode", so they stay
+     identical in English.
+  2. `autoclean` reads 「自動内部クリーン」 in the app for Daikin but
+     「内部クリーン」 for Mitsubishi, while the API ships the same
+     `text: "Mold Proof"` for both. One translation key cannot vary by
+     model without teaching the platform code about manufacturers — exactly
+     what this design avoids — so the shorter, shared 「内部クリーン」 wins.
+  3. Mitsubishi's `dehumid` arrives with `text: "Humidify"` and the
+     description "Set the desired humidity level", which contradicts the
+     hardcoded `dehumid` → "Dehumidify" name. Daikin's own catalog does
+     spell it `text: "Dehumidify"` (and ships a separate `humid`), so the
+     translation is right for Daikin and wrong for Mitsubishi; it wins
+     today only because it is the localized one.
 - Non-binary extras are entities too. Multi-option choice extras (Daikin
   `humid`/`dehumid`: off / 40% / 45% / 50% / continuous / beauty) are
   CONFIG-category `select` entities; options are the API's raw values,
@@ -184,6 +223,12 @@ reviewer-facing rationale for Home Assistant core submission lives in
   `NatureRemoExtraEntity` in `entity.py`.
 - Fujitsu `airdir-swing`/`airdir-tilt` are one-shot commands with no
   readable state anywhere in the API (probe-verified) → press buttons.
+  Their names ("風向スイング"/"風向切替") match neither reference we have:
+  the Nature app shows 「スイング」/「固定」 for the same two buttons, while
+  the physical remote is labelled 「上下風向」/「左右風向」. Which one is
+  right depends on what each command actually does on the unit, which has
+  not been observed — so they keep the current descriptive names until
+  someone can watch the airflow while pressing them.
 
 ## Floor heater
 

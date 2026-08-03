@@ -9,7 +9,7 @@ custom component; see [docs/CORE_SUBMISSION.md](docs/CORE_SUBMISSION.md)).
 
 | Nature Remo | Home Assistant |
 | --- | --- |
-| Air conditioner | `climate` — modes, target temperature, fan, vertical & horizontal swing; fixed buttons (e.g. swing/tilt) as `button`; remote-side extras as `switch` (on/off, e.g. Daikin mold proof), `select` (multi-option, e.g. humidify level) or `time` (e.g. night set mode) |
+| Air conditioner | `climate` — modes, target temperature, fan, vertical & horizontal swing; fixed buttons (e.g. swing/tilt) as `button`; remote-side extras as `switch` (on/off, e.g. mold proof, eco), `select` (multi-option, e.g. humidity level) or `time` (e.g. night set mode). Whatever extras the API reports for your model are exposed — verified across Daikin, Mitsubishi and Panasonic remotes |
 | Floor heater | `climate` — auto / warm modes, target temperature; remote-side extras (e.g. Corona save energy) as `switch` / `select` / `time` |
 | TV | every API-enumerated button as a `button` entity (power / input / channel / volume shortcuts enabled by default; the rest one click away). Power is a toggle signal — the TV has no discrete on/off codes |
 | Light | `light` (on/off) + `button` for night / full / brightness buttons |
@@ -58,8 +58,15 @@ installed automatically from the manifest.
   operation modes; the matching entity reports unavailable while the
   appliance's current mode hides it, because such a write is accepted and
   then ignored by the cloud.
-- State changes made with the appliance's own physical remote are invisible
-  to Nature and therefore to this integration.
+- State changes made with the appliance's own physical remote are picked up
+  **for air conditioners only**, and only where Nature can hear the remote:
+  since [July 2026](https://nature.global/blog/27763/) a Remo 3, Lapis,
+  mini 2 or nano placed near the indoor unit receives the AC remote's
+  infrared and syncs the resulting state. It then arrives here like any
+  other change, at the next poll. Verified on 2026-08-03: a temperature and
+  swing change made on a Daikin remote showed up in the Cloud API within
+  seconds. Nothing else is heard this way — a TV, light or custom IR
+  appliance driven by its own remote stays invisible.
 - The 30 req / 5 min budget is **per Nature account**: running this
   integration alongside another Nature Remo integration (or heavy app use)
   on the same account causes intermittent rate-limit unavailability. Use

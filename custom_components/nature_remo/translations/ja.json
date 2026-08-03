@@ -261,6 +261,18 @@
     "switch": {
       "autoclean": {
         "name": "内部クリーン"
+      },
+      "eco": {
+        "name": "Eco"
+      },
+      "hotwind": {
+        "name": "高温風"
+      },
+      "powerful": {
+        "name": "パワフル運転"
+      },
+      "sleep": {
+        "name": "おやすみ運転"
       }
     },
     "select": {
@@ -273,7 +285,7 @@
     },
     "time": {
       "new_sleep": {
-        "name": "ナイトセットモード"
+        "name": "新おやすみ運転"
       }
     }
   },
@@ -288,7 +300,7 @@
       "message": "{name} へのコマンド送信に失敗しました: {error}"
     },
     "command_failed_rate_limited": {
-      "message": "{name} へのコマンド送信に失敗しました: {error}（レート制限は epoch {reset} にリセットされます）"
+      "message": "{name} へのコマンド送信に失敗しました: {error}（レート制限は {reset} にリセットされます）"
     },
     "extra_write_ignored": {
       "message": "{name} を更新できません: {extra} への書き込みが API に無視されました（現在の運転モードでは利用できません）"
@@ -312,7 +324,7 @@
       "message": "Nature API との通信でエラーが発生しました: {error}"
     },
     "update_rate_limited": {
-      "message": "Nature API のレート制限を超過しました（epoch {reset} にリセット）"
+      "message": "Nature API のレート制限を超過しました（{reset} に再開）"
     }
   }
 }

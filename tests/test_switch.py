@@ -1,12 +1,19 @@
 """Tests for the Nature Remo switch platform (AC extras)."""
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock
 
 import homeassistant.util.dt as dt_util
 import pytest
-from aionatureremo import Appliance, NatureRemoConnectionError, NatureRemoRateLimitError
+from aionatureremo import (
+    AirconExtra,
+    AirconExtraOption,
+    Appliance,
+    Device,
+    NatureRemoConnectionError,
+    NatureRemoRateLimitError,
+)
 from homeassistant.components.select import DOMAIN as SELECT_DOMAIN
 from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
 from homeassistant.components.time import DOMAIN as TIME_DOMAIN
@@ -30,7 +37,7 @@ from pytest_homeassistant_custom_component.common import (
 )
 
 from custom_components.nature_remo.const import DOMAIN
-from tests.conftest import aircon_settings, with_extra_availability
+from tests.conftest import aircon_settings, async_poll, with_extra_availability
 
 ENTITY = "switch.living_ac_mold_proof"
 FH_ENTITY = "switch.floor_heater_save_energy"
@@ -278,7 +285,7 @@ async def test_extra_switch_communication_failure_raises(
 async def test_extra_switch_rate_limited_write_reports_reset(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
 ) -> None:
-    """A 429 on an extras write includes the reset epoch (spec 5.5)."""
+    """A 429 on an extras write names when the limit resets (spec 5.5)."""
     mock_client.set_aircon_settings.side_effect = NatureRemoRateLimitError(
         429, "limited", reset=1752825600
     )
@@ -287,11 +294,13 @@ async def test_extra_switch_rate_limited_write_reports_reset(
             SWITCH_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: ENTITY}, blocking=True
         )
     assert exc.value.translation_key == "command_failed_rate_limited"
-    assert exc.value.translation_placeholders == {
-        "name": "Living AC",
-        "error": "HTTP 429: limited",
-        "reset": "1752825600",
-    }
+    placeholders = exc.value.translation_placeholders
+    assert placeholders is not None
+    assert placeholders["name"] == "Living AC"
+    assert placeholders["error"] == "HTTP 429: limited"
+    assert datetime.fromisoformat(placeholders["reset"]) == dt_util.utc_from_timestamp(
+        1752825600
+    )
 
 
 async def test_floor_heater_extra_switch_state(
@@ -396,3 +405,86 @@ async def test_extra_write_after_appliance_vanishes(
     assert exc_info.value.translation_key == "appliance_missing"
     assert exc_info.value.translation_placeholders == {"name": "Living AC"}
     mock_client.set_aircon_settings.assert_not_called()
+
+
+async def test_extra_switch_follows_the_hub_reporting_it(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: AsyncMock,
+    devices: list[Device],
+) -> None:
+    """An appliance is unreachable while the Remo in front of it is offline.
+
+    The cloud keeps serving the appliance and its stored settings, so
+    without following the hub the entity would invite commands that
+    cannot arrive.
+    """
+    assert hass.states.get(ENTITY).state != STATE_UNAVAILABLE
+
+    mock_client.get_devices.return_value = [
+        replace(device, online=False) if device.id == "device-remo3-1" else device
+        for device in devices
+    ]
+    await async_poll(hass)
+
+    assert hass.states.get(ENTITY).state == STATE_UNAVAILABLE
+
+
+async def test_localized_extra_ids_use_their_translation_key(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+) -> None:
+    """Ids seen on real remotes get a localized name, not the API's English.
+
+    Shapes copied from live catalogs: `eco` from a Panasonic acxa75c11010
+    and `sleep` from a Daikin arc478a119, both binary choices whose `text`
+    the API only ships in English.
+    """
+    on_off = [
+        AirconExtraOption(value="off", text="Off", default=True),
+        AirconExtraOption(value="on", text="On", default=False),
+    ]
+    extras = [
+        AirconExtra(
+            id="eco",
+            text="Eco",
+            description="Power Saving Mode",
+            type="choice",
+            availability="available",
+            options=on_off,
+            default_time=None,
+        ),
+        AirconExtra(
+            id="sleep",
+            text="Night Set Mode",
+            description="Controls airflow direction and volume.",
+            type="choice",
+            availability="available",
+            options=on_off,
+            default_time=None,
+        ),
+    ]
+    mock_client.get_appliances.return_value = [
+        replace(appliance, aircon=replace(appliance.aircon, extras=extras))
+        if appliance.id == "appliance-ac-1"
+        else appliance
+        for appliance in appliances
+    ]
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_registry = er.async_get(hass)
+    for extra_id, name in (("eco", "Eco"), ("sleep", "Night set mode")):
+        entity_id = entity_registry.async_get_entity_id(
+            SWITCH_DOMAIN, DOMAIN, f"appliance-ac-1_extra_{extra_id}"
+        )
+        assert entity_id is not None
+        entry = entity_registry.async_get(entity_id)
+        assert entry is not None
+        # A translation_key at all is what separates these from the fallback
+        # path, which leaves it None and copies the catalog's English text.
+        assert entry.translation_key == extra_id
+        assert entry.original_name == name

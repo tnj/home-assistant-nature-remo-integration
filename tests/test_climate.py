@@ -1,9 +1,11 @@
 """Tests for the Nature Remo climate platform."""
 
 from dataclasses import replace
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import homeassistant.util.dt as dt_util
 import pytest
 from aionatureremo import Appliance, Device, NatureRemoRateLimitError
 from homeassistant.components.climate import (
@@ -280,7 +282,7 @@ async def test_climate_set_fan_and_swing_modes(
 async def test_climate_command_failure_raises(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: AsyncMock
 ) -> None:
-    """A 429 surfaces as HomeAssistantError including the reset epoch (spec 5.5)."""
+    """A 429 surfaces as HomeAssistantError naming the reset time (spec 5.5)."""
     mock_client.set_aircon_settings.side_effect = NatureRemoRateLimitError(
         429, "limited", reset=1752825600
     )
@@ -289,11 +291,13 @@ async def test_climate_command_failure_raises(
             CLIMATE_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: ENTITY}, blocking=True
         )
     assert exc_info.value.translation_key == "command_failed_rate_limited"
-    assert exc_info.value.translation_placeholders == {
-        "name": "Living AC",
-        "error": "HTTP 429: limited",
-        "reset": "1752825600",
-    }
+    placeholders = exc_info.value.translation_placeholders
+    assert placeholders is not None
+    assert placeholders["name"] == "Living AC"
+    assert placeholders["error"] == "HTTP 429: limited"
+    assert datetime.fromisoformat(placeholders["reset"]) == dt_util.utc_from_timestamp(
+        1752825600
+    )
 
 
 async def test_climate_set_hvac_mode_off(

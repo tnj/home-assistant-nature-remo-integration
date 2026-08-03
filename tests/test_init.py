@@ -248,3 +248,67 @@ async def test_remove_config_entry_device(
         identifiers={(DOMAIN, "ghost-appliance")},
     )
     assert await async_remove_config_entry_device(hass, init_integration, ghost) is True
+
+
+async def test_appliance_without_a_platform_gets_no_device(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+    device_registry: dr.DeviceRegistry,
+) -> None:
+    """A type no platform serves would otherwise be an empty device.
+
+    BLE_SESAME5 exposes only static pairing information and carries no
+    signals (verified live: the account's SESAME shows up with zero
+    entities), so nothing can be built from it until the API grows a lock
+    state.
+    """
+    mock_client.get_appliances.return_value = [
+        replace(appliance, type="BLE_SESAME5", signals=[])
+        if appliance.id == "appliance-ir-1"
+        else appliance
+        for appliance in appliances
+    ]
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert (
+        device_registry.async_get_device(identifiers={(DOMAIN, "appliance-ir-1")})
+        is None
+    )
+    assert (
+        device_registry.async_get_device(identifiers={(DOMAIN, "appliance-ac-1")})
+        is not None
+    )
+
+
+async def test_unserved_type_keeps_its_device_while_it_has_signals(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: AsyncMock,
+    appliances: list[Appliance],
+    device_registry: dr.DeviceRegistry,
+) -> None:
+    """Signals make an appliance serviceable whatever its type says.
+
+    The button platform builds one entity per signal without looking at the
+    type, so skipping such an appliance here would only defer its device to
+    whichever entity is added first — and leave it out of the per-poll
+    re-registration that propagates a nickname edited in the Nature app.
+    """
+    mock_client.get_appliances.return_value = [
+        replace(appliance, type="SOMETHING_NATURE_ADDED_LATER")
+        if appliance.id == "appliance-ir-1"
+        else appliance
+        for appliance in appliances
+    ]
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert (
+        device_registry.async_get_device(identifiers={(DOMAIN, "appliance-ir-1")})
+        is not None
+    )

@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import homeassistant.util.dt as dt_util
 import pytest
 from aionatureremo import NatureRemoConnectionError, NatureRemoRateLimitError
 from homeassistant.exceptions import HomeAssistantError
@@ -71,6 +73,23 @@ def test_ja_exceptions_cover_all_keys() -> None:
         assert _message_placeholders(entry["message"]) == EXCEPTION_LEDGER[key], key
 
 
+def test_ja_entity_names_cover_all_keys() -> None:
+    """ja.json names every entity key strings.json does.
+
+    An entity translation key present in strings.json but missing from
+    ja.json renders as the raw key in a Japanese UI — the one failure mode
+    the identical-file check above cannot catch, since ja.json is by design
+    the only file that differs.
+    """
+    entity = _load("strings.json")["entity"]
+    ja_entity = _load("translations/ja.json")["entity"]
+    assert set(ja_entity) == set(entity)
+    for platform, keys in entity.items():
+        assert set(ja_entity[platform]) == set(keys), platform
+        for key in keys:
+            assert ja_entity[platform][key]["name"], f"{platform}.{key}"
+
+
 def test_raise_command_error_plain() -> None:
     """A non-429 client error maps to command_failed with name and error."""
     err = NatureRemoConnectionError("boom")
@@ -84,17 +103,23 @@ def test_raise_command_error_plain() -> None:
 
 
 def test_raise_command_error_rate_limited() -> None:
-    """A 429 with a known reset maps to the rate-limited key (spec 5.5)."""
+    """A 429 with a known reset maps to the rate-limited key (spec 5.5).
+
+    The epoch is rendered in local time: a bare epoch means nothing to the
+    person reading the notification.
+    """
     err = NatureRemoRateLimitError(429, "limited", reset=1752825600)
     with pytest.raises(HomeAssistantError) as exc_info:
         raise_command_error("Living AC", err)
     exc = exc_info.value
     assert exc.translation_key == "command_failed_rate_limited"
-    assert exc.translation_placeholders == {
-        "name": "Living AC",
-        "error": "HTTP 429: limited",
-        "reset": "1752825600",
-    }
+    placeholders = exc.translation_placeholders
+    assert placeholders is not None
+    assert placeholders["name"] == "Living AC"
+    assert placeholders["error"] == "HTTP 429: limited"
+    assert datetime.fromisoformat(placeholders["reset"]) == dt_util.utc_from_timestamp(
+        1752825600
+    )
 
 
 def test_raise_command_error_rate_limited_without_reset() -> None:
