@@ -55,6 +55,30 @@ push-generation merge with it) → button/light → number →
 switch/select/time (extras) → diagnostics → dynamic entity management +
 stale-device removal. One platform (or one coherent feature) per PR.
 
+## 4b. Core review feedback not backported to the custom component
+
+The review on core PR #1 produced five improvements, backported here on
+2026-08-03 (rate-limit `retry_after` + readable reset timestamps, appliance
+entities following their hub's `online`, no device for appliances no
+platform serves, and a poll-driven hub-disappearance test). Two changes
+stayed in core only, and are deliberately **not** pending work here:
+
+- **Dropping the `_last_device` / `_last_appliance` fallbacks in
+  `entity.py`.** Core ships read-only sensors; here
+  `NatureRemoExtraEntity._async_write_extra` reads `self.appliance.nickname`
+  *after* finding the appliance gone, to build the `appliance_missing`
+  message. Revisit only if the command platforms ever leave.
+- **Docstring condensation and `@override` decorators** — core house style.
+
+One change is genuinely pending, blocked on the dependency floor:
+
+- **`via_device` → `via_device_id`** in `build_appliance_device_info`.
+  `DeviceInfo["via_device_id"]` arrived in home-assistant/core#175785 (HA
+  **2026.8**); this component supports HA **2026.2** (`hacs.json`,
+  `homeassistant>=2026.2` in `pyproject.toml`), where
+  `async_get_or_create()` rejects the keyword. The tuple form is deprecated
+  but not removed until 2027.8, so switch when the floor reaches 2026.8+.
+
 ## 5. Documentation PRs
 
 `home-assistant/home-assistant.io`: one page per integration
