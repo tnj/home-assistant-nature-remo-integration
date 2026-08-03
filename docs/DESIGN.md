@@ -223,6 +223,12 @@ reviewer-facing rationale for Home Assistant core submission lives in
   `NatureRemoExtraEntity` in `entity.py`.
 - Fujitsu `airdir-swing`/`airdir-tilt` are one-shot commands with no
   readable state anywhere in the API (probe-verified) → press buttons.
+  Their names ("風向スイング"/"風向切替") match neither reference we have:
+  the Nature app shows 「スイング」/「固定」 for the same two buttons, while
+  the physical remote is labelled 「上下風向」/「左右風向」. Which one is
+  right depends on what each command actually does on the unit, which has
+  not been observed — so they keep the current descriptive names until
+  someone can watch the airflow while pressing them.
 
 ## Floor heater
 
