@@ -265,6 +265,12 @@
       "eco": {
         "name": "Eco"
       },
+      "hotwind": {
+        "name": "高温風"
+      },
+      "powerful": {
+        "name": "パワフル運転"
+      },
       "sleep": {
         "name": "おやすみ運転"
       }

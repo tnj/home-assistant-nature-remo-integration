@@ -185,22 +185,31 @@ reviewer-facing rationale for Home Assistant core submission lives in
   | Fujitsu `ar-rfa1j` | none |
 
   `autoclean` is the one id shared by all three manufacturers; everything
-  else varies. `eco` and `sleep` were added to the switch table from these
-  catalogs (Japanese names taken from the Nature app: "Eco" and
-  「おやすみ運転」), so the fallback now only covers vocabulary nobody has
-  seen yet.
+  else varies. Japanese names come from what the Nature app displays for
+  the same setting, which is why `eco` stays "Eco" and `sleep` is
+  「おやすみ運転」. `aroma`, `save_energy` and `off_timer` are still
+  unmapped: nobody has read their app labels, and inventing a name that
+  disagrees with the app is worse than showing the API's English.
 
-  Two quirks the table records rather than resolves. Daikin `arc478a119`
-  spells night set mode `sleep` as a binary choice where `arc472a82` spells
-  it `new_sleep` as a `time` extra, so the same feature is a switch on one
-  remote and a time entity on another — and the two carry different
-  Japanese names today ("おやすみ運転" vs "ナイトセットモード"), because
-  only the former has been checked against the app. And Mitsubishi's
-  `dehumid` arrives with `text: "Humidify"` and the description "Set the
-  desired humidity level", which contradicts the hardcoded `dehumid` →
-  "Dehumidify" name; the hardcoded translation wins today because it is the
-  only localized one, at the cost of disagreeing with what the API (and the
-  physical remote) calls that setting on this model.
+  Three quirks the table records rather than resolves.
+
+  1. Daikin `arc478a119` spells night set mode `sleep` as a binary choice
+     where `arc472a82` spells it `new_sleep` as a `time` extra, so the same
+     feature is a switch on one remote and a time entity on another. The
+     app names them 「おやすみ運転」 and 「新おやすみ運転」, so the two keys
+     differ in Japanese; the API calls both "Night Set Mode", so they stay
+     identical in English.
+  2. `autoclean` reads 「自動内部クリーン」 in the app for Daikin but
+     「内部クリーン」 for Mitsubishi, while the API ships the same
+     `text: "Mold Proof"` for both. One translation key cannot vary by
+     model without teaching the platform code about manufacturers — exactly
+     what this design avoids — so the shorter, shared 「内部クリーン」 wins.
+  3. Mitsubishi's `dehumid` arrives with `text: "Humidify"` and the
+     description "Set the desired humidity level", which contradicts the
+     hardcoded `dehumid` → "Dehumidify" name. Daikin's own catalog does
+     spell it `text: "Dehumidify"` (and ships a separate `humid`), so the
+     translation is right for Daikin and wrong for Mitsubishi; it wins
+     today only because it is the localized one.
 - Non-binary extras are entities too. Multi-option choice extras (Daikin
   `humid`/`dehumid`: off / 40% / 45% / 50% / continuous / beauty) are
   CONFIG-category `select` entities; options are the API's raw values,

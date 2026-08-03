@@ -30,6 +30,8 @@ PARALLEL_UPDATES = 1
 KNOWN_EXTRA_TRANSLATION_KEYS = {
     "autoclean": "autoclean",
     "eco": "eco",
+    "hotwind": "hotwind",
+    "powerful": "powerful",
     "sleep": "sleep",
 }
 

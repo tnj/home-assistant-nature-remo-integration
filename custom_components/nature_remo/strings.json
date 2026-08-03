@@ -265,6 +265,12 @@
       "eco": {
         "name": "Eco"
       },
+      "hotwind": {
+        "name": "Hot airflow"
+      },
+      "powerful": {
+        "name": "Powerful"
+      },
       "sleep": {
         "name": "Night set mode"
       }
