@@ -58,8 +58,15 @@ installed automatically from the manifest.
   operation modes; the matching entity reports unavailable while the
   appliance's current mode hides it, because such a write is accepted and
   then ignored by the cloud.
-- State changes made with the appliance's own physical remote are invisible
-  to Nature and therefore to this integration.
+- State changes made with the appliance's own physical remote are picked up
+  **for air conditioners only**, and only where Nature can hear the remote:
+  since [July 2026](https://nature.global/blog/27763/) a Remo 3, Lapis,
+  mini 2 or nano placed near the indoor unit receives the AC remote's
+  infrared and syncs the resulting state. It then arrives here like any
+  other change, at the next poll. Verified on 2026-08-03: a temperature and
+  swing change made on a Daikin remote showed up in the Cloud API within
+  seconds. Nothing else is heard this way — a TV, light or custom IR
+  appliance driven by its own remote stays invisible.
 - The 30 req / 5 min budget is **per Nature account**: running this
   integration alongside another Nature Remo integration (or heavy app use)
   on the same account causes intermittent rate-limit unavailability. Use

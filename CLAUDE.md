@@ -125,6 +125,14 @@ via trusted publishing; then bump the pin here.
   (e.g. `["-5",…,"5"]`); detect via `+`/`-` prefix or value ≤ 0.
 - Unsupported `dirh` ranges arrive as `[""]` (placeholder) — empty strings
   are stripped in `_str_list`.
+- **AC physical-remote operations now reach the Cloud API** (Nature's
+  "エアコン操作同期", 2026-07-13, Remo 3 / Lapis / mini 2 / nano placed near
+  the indoor unit receive the AC remote's IR). Live-verified 2026-08-03: a
+  Daikin remote's temperature 27.5→28 and dir 1→swing appeared in
+  `settings` with a fresh `updated_at`, no write from us. So `settings` is
+  no longer only an echo of what we sent — the README claim that physical
+  remotes are invisible was true only before this. Still AC-only: TV, light
+  and IR appliances driven by their own remote remain invisible.
 - **Extras are not Daikin-only and their ids are per remote model.** Live on
   2026-08-03: Daikin `arc478a119` → `sleep`(choice)+`autoclean`; Mitsubishi
   `pg051` → `autoclean`+`dehumid`(70/60/50/40%); Panasonic `acxa75c11010` →
