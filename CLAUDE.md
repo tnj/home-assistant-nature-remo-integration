@@ -125,6 +125,12 @@ via trusted publishing; then bump the pin here.
   (e.g. `["-5",…,"5"]`); detect via `+`/`-` prefix or value ≤ 0.
 - Unsupported `dirh` ranges arrive as `[""]` (placeholder) — empty strings
   are stripped in `_str_list`.
+- **Extras are not Daikin-only and their ids are per remote model.** Live on
+  2026-08-03: Daikin `arc478a119` → `sleep`(choice)+`autoclean`; Mitsubishi
+  `pg051` → `autoclean`+`dehumid`(70/60/50/40%); Panasonic `acxa75c11010` →
+  `autoclean`+`eco`; Fujitsu `ar-rfa1j` → none. Only `autoclean` is shared.
+  Unmapped ids fall back to the catalog's `text`, so new vocabulary needs no
+  code change — only a translation entry if you want it localized.
 - `extra` request fields are dotted form keys: `extra.$id=$value`; `type` is
   `choice` (binary or multi-option, e.g. `50%`) or `time` (`defaultTime`, sent
   as `21:00`). `availability` is three-valued over an otherwise static

@@ -9,7 +9,7 @@ custom component; see [docs/CORE_SUBMISSION.md](docs/CORE_SUBMISSION.md)).
 
 | Nature Remo | Home Assistant |
 | --- | --- |
-| Air conditioner | `climate` — modes, target temperature, fan, vertical & horizontal swing; fixed buttons (e.g. swing/tilt) as `button`; remote-side extras as `switch` (on/off, e.g. Daikin mold proof), `select` (multi-option, e.g. humidify level) or `time` (e.g. night set mode) |
+| Air conditioner | `climate` — modes, target temperature, fan, vertical & horizontal swing; fixed buttons (e.g. swing/tilt) as `button`; remote-side extras as `switch` (on/off, e.g. mold proof, eco), `select` (multi-option, e.g. humidity level) or `time` (e.g. night set mode). Whatever extras the API reports for your model are exposed — verified across Daikin, Mitsubishi and Panasonic remotes |
 | Floor heater | `climate` — auto / warm modes, target temperature; remote-side extras (e.g. Corona save energy) as `switch` / `select` / `time` |
 | TV | every API-enumerated button as a `button` entity (power / input / channel / volume shortcuts enabled by default; the rest one click away). Power is a toggle signal — the TV has no discrete on/off codes |
 | Light | `light` (on/off) + `button` for night / full / brightness buttons |

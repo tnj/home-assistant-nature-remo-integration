@@ -171,6 +171,30 @@ reviewer-facing rationale for Home Assistant core submission lives in
   extra back, so a missing echo raises instead of pretending the toggle
   worked. Entering a mode that hides a stored extra clears it server-side;
   that is the cloud remote's own semantics, mirrored as-is.
+- **The extras vocabulary is per remote model, not per manufacturer**, so no
+  platform code enumerates it: `entity.extra_platform()` classifies whatever
+  the catalog reports, and an id with no entry in a platform's
+  `KNOWN_EXTRA_TRANSLATION_KEYS` falls back to the API's own `text`. Live
+  catalogs seen on 2026-08-03 (four ACs, one account):
+
+  | Remote | Extras |
+  | --- | --- |
+  | Daikin `arc478a119` | `sleep` (choice on/off, text "Night Set Mode"), `autoclean` |
+  | Mitsubishi `pg051` | `autoclean`, `dehumid` (choice 70%/60%/50%/40%) |
+  | Panasonic `acxa75c11010` | `autoclean`, `eco` (choice on/off) |
+  | Fujitsu `ar-rfa1j` | none |
+
+  `autoclean` is the one id shared by all three manufacturers; everything
+  else varies. Two observations worth keeping in mind before extending the
+  translation tables: Daikin `arc478a119` spells night set mode `sleep` as a
+  binary choice, where `arc472a82` spells it `new_sleep` as a `time` extra —
+  so the same feature is a switch on one remote and a time entity on
+  another. And Mitsubishi's `dehumid` arrives with `text: "Humidify"` and
+  the description "Set the desired humidity level", which contradicts the
+  hardcoded `dehumid` → "Dehumidify" name; the hardcoded translation wins
+  today because it is the only localized one, at the cost of disagreeing
+  with what the API (and the physical remote) calls that setting on this
+  model.
 - Non-binary extras are entities too. Multi-option choice extras (Daikin
   `humid`/`dehumid`: off / 40% / 45% / 50% / continuous / beauty) are
   CONFIG-category `select` entities; options are the API's raw values,
