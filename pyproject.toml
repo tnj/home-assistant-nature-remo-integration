@@ -24,7 +24,7 @@ dev = [
     # the resolver can't dodge the versions the invocations assume.
     "pytest>=8",
     "pytest-cov>=5",
-    "ruff>=0.16.1",
+    "ruff>=0.16.2",
     "mypy>=1.14.0",
 ]
 
