@@ -14,7 +14,7 @@ dev = [
     # Test against at least the minimum HA declared in hacs.json. Without a
     # floor, dependency resolution (e.g. Dependabot security bumps) can
     # silently downgrade HA to ancient releases whose pins don't conflict.
-    "homeassistant>=2026.7.4",
+    "homeassistant>=2026.8.1",
     # phcc pins its matching HA exactly; the floor stops the resolver from
     # dodging that pin by falling back to fossil phcc releases. The resolved
     # HA therefore follows the newest phcc, which tracks HA releases daily.
