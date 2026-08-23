@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@v10.0.1
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run ruff format --check .
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@v10.0.1
       - run: uv sync
       - run: uv run mypy
 
@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@v10.0.1
       - run: uv sync
       # This repo's tests mock the client; aionatureremo is covered by its
       # own repo's suite, so it stays out of the coverage measurement here.
